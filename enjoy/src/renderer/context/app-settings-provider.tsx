@@ -4,8 +4,6 @@ import { Client } from "@/api";
 import i18n from "@renderer/i18n";
 import ahoy from "ahoy.js";
 import { type Consumer, createConsumer } from "@rails/actioncable";
-import * as Sentry from "@sentry/electron/renderer";
-import { SENTRY_DSN } from "@/constants";
 import { DbProviderContext } from "@renderer/context";
 import { UserSettingKeyEnum } from "@/types/enums";
 
@@ -46,6 +44,8 @@ const initialState: AppSettingsProviderState = {
   initialized: false,
 };
 
+const EnjoyApp = window.__ENJOY_APP__;
+
 export const AppSettingsProviderContext =
   createContext<AppSettingsProviderState>(initialState);
 
@@ -67,22 +67,11 @@ export const AppSettingsProvider = ({
   const [vocabularyConfig, setVocabularyConfig] =
     useState<VocabularyConfigType>(null);
   const [proxy, setProxy] = useState<ProxyConfigType>();
-  const EnjoyApp = window.__ENJOY_APP__;
   const [recorderConfig, setRecorderConfig] = useState<RecorderConfigType>();
   const [ipaMappings, setIpaMappings] = useState<{ [key: string]: string }>(
     IPA_MAPPINGS
   );
   const db = useContext(DbProviderContext);
-
-  const initSentry = () => {
-    EnjoyApp.app.isPackaged().then((isPackaged) => {
-      if (isPackaged) {
-        Sentry.init({
-          dsn: SENTRY_DSN,
-        });
-      }
-    });
-  };
 
   const fetchLanguages = async () => {
     const language = await EnjoyApp.userSettings.get(
@@ -236,12 +225,11 @@ export const AppSettingsProvider = ({
   };
 
   useEffect(() => {
-    if (db.state !== "connected") return;
-
-    fetchLanguages();
-    fetchVocabularyConfig();
-    initSentry();
-    fetchRecorderConfig();
+    if (db.state === "connected") {
+      fetchLanguages();
+      fetchVocabularyConfig();
+      fetchRecorderConfig();
+    }
   }, [db.state]);
 
   useEffect(() => {
@@ -267,7 +255,7 @@ export const AppSettingsProvider = ({
         },
       })
     );
-  }, [user, apiUrl, language]);
+  }, [user?.accessToken, apiUrl, language]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -279,6 +267,7 @@ export const AppSettingsProvider = ({
 
   useEffect(() => {
     if (!webApi) return;
+    if (ipaMappings && latestVersion) return;
 
     webApi.config("ipa_mappings").then((mappings) => {
       if (mappings) setIpaMappings(mappings);
@@ -308,6 +297,7 @@ export const AppSettingsProvider = ({
     });
     return () => {
       db.disconnect();
+      setUser(null);
     };
   }, [user?.id]);
 
@@ -335,7 +325,7 @@ export const AppSettingsProvider = ({
         setProxy: setProxyConfigHandler,
         vocabularyConfig,
         setVocabularyConfig: setVocabularyConfigHandler,
-        initialized: Boolean(user && libraryPath),
+        initialized: Boolean(db.state === "connected" && libraryPath),
         ahoy,
         cable,
         recorderConfig,
