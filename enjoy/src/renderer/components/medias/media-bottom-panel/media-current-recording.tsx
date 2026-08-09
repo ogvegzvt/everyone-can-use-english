@@ -1,4 +1,11 @@
-import { useEffect, useContext, useRef, useState } from "react";
+import {
+  useEffect,
+  useContext,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
 import {
   AppSettingsProviderContext,
   HotKeysSettingsProviderContext,
@@ -50,17 +57,13 @@ import { formatDuration } from "@renderer/lib/utils";
 import { useHotkeys } from "react-hotkeys-hook";
 import { LiveAudioVisualizer } from "react-audio-visualize";
 import debounce from "lodash/debounce";
+import { TimelineEntry } from "echogarden/dist/utilities/Timeline.d.js";
 
 const ACTION_BUTTON_HEIGHT = 35;
 export const MediaCurrentRecording = () => {
   const {
     isRecording,
     isPaused,
-    cancelRecording,
-    togglePauseResume,
-    stopRecording,
-    recordingTime,
-    mediaRecorder,
     currentRecording,
     renderPitchContour: renderMediaPitchContour,
     regions: mediaRegions,
@@ -71,6 +74,8 @@ export const MediaCurrentRecording = () => {
     currentSegment,
     createSegment,
     currentTime: mediaCurrentTime,
+    caption,
+    toggleRegion,
   } = useContext(MediaShadowProviderContext);
   const { webApi, EnjoyApp } = useContext(AppSettingsProviderContext);
   const { currentHotkeys } = useContext(HotKeysSettingsProviderContext);
@@ -251,7 +256,7 @@ export const MediaCurrentRecording = () => {
         toast.promise(
           EnjoyApp.download.start(currentRecording.src, savePath as string),
           {
-            loading: t("downloading", { file: currentRecording.filename }),
+            loading: t("downloadingFile", { file: currentRecording.filename }),
             success: () => t("downloadedSuccessfully"),
             error: t("downloadFailed"),
             position: "bottom-right",
@@ -262,6 +267,26 @@ export const MediaCurrentRecording = () => {
         if (err) toast.error(err.message);
       });
   };
+
+  const playWord = useCallback(
+    (word: string, index: number) => {
+      const candidates = caption.timeline.filter(
+        (w: TimelineEntry) => w.text.toLowerCase() === word.toLowerCase()
+      );
+      const target = candidates[index];
+      if (!target) return;
+
+      const wordIndex = caption.timeline.findIndex(
+        (w) => w.startTime === target.startTime
+      );
+
+      toggleRegion([wordIndex]);
+      setTimeout(() => {
+        wavesurfer?.playPause();
+      }, 250);
+    },
+    [caption?.timeline, toggleRegion, wavesurfer]
+  );
 
   const calContainerSize = () => {
     const size = ref?.current
@@ -429,15 +454,18 @@ export const MediaCurrentRecording = () => {
     if (!ref?.current) return;
     if (!player) return;
 
+    let rafId: number;
     const observer = new ResizeObserver(() => {
-      debouncedCalContainerSize();
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        debouncedCalContainerSize();
+      });
     });
     observer.observe(ref.current);
-    EnjoyApp.window.onResize(debouncedCalContainerSize);
 
     return () => {
-      EnjoyApp.window.removeListeners();
       observer.disconnect();
+      cancelAnimationFrame(rafId);
     };
   }, [ref, player]);
 
@@ -478,6 +506,7 @@ export const MediaCurrentRecording = () => {
       icon: MediaRecordButton,
       active: isRecording,
       onClick: () => {},
+      asChild: true,
     },
     {
       id: "recording-play-or-pause-button",
@@ -496,6 +525,7 @@ export const MediaCurrentRecording = () => {
           player?.playPause();
         }
       },
+      asChild: false,
     },
     {
       id: "media-pronunciation-assessment-button",
@@ -511,6 +541,7 @@ export const MediaCurrentRecording = () => {
           : "text-red-500"
         : "",
       onClick: () => setDetailIsOpen(!detailIsOpen),
+      asChild: false,
     },
     {
       id: "media-compare-button",
@@ -519,6 +550,7 @@ export const MediaCurrentRecording = () => {
       icon: GitCompareIcon,
       active: isComparing,
       onClick: toggleCompare,
+      asChild: false,
     },
     {
       id: "media-select-region-button",
@@ -527,6 +559,7 @@ export const MediaCurrentRecording = () => {
       icon: TextCursorInputIcon,
       active: isSelectingRegion,
       onClick: () => setIsSelectingRegion(!isSelectingRegion),
+      asChild: false,
     },
     {
       id: "media-share-button",
@@ -535,6 +568,7 @@ export const MediaCurrentRecording = () => {
       icon: Share2Icon,
       active: isSharing,
       onClick: () => setIsSharing(true),
+      asChild: false,
     },
     {
       id: "media-download-button",
@@ -543,72 +577,12 @@ export const MediaCurrentRecording = () => {
       icon: DownloadIcon,
       active: false,
       onClick: handleDownload,
+      asChild: false,
     },
   ];
 
   if (isRecording || isPaused) {
-    return (
-      <div className="w-full h-full flex justify-center items-center gap-4 border rounded-xl shadow">
-        <LiveAudioVisualizer
-          mediaRecorder={mediaRecorder}
-          barWidth={2}
-          gap={2}
-          width={480}
-          height="100%"
-          fftSize={512}
-          maxDecibels={-10}
-          minDecibels={-80}
-          smoothingTimeConstant={0.4}
-        />
-        <span className="serif text-muted-foreground text-sm">
-          {Math.floor(recordingTime / 60)}:
-          {String(recordingTime % 60).padStart(2, "0")}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            data-tooltip-id="chat-input-tooltip"
-            data-tooltip-content={t("cancel")}
-            onClick={cancelRecording}
-            className="rounded-full shadow w-8 h-8 bg-red-500 hover:bg-red-600"
-            variant="secondary"
-            size="icon"
-          >
-            <XIcon fill="white" className="w-4 h-4 text-white" />
-          </Button>
-          <Button
-            onClick={togglePauseResume}
-            className="rounded-full shadow w-8 h-8"
-            size="icon"
-          >
-            {isPaused ? (
-              <PlayIcon
-                data-tooltip-id="chat-input-tooltip"
-                data-tooltip-content={t("continue")}
-                fill="white"
-                className="w-4 h-4"
-              />
-            ) : (
-              <PauseIcon
-                data-tooltip-id="chat-input-tooltip"
-                data-tooltip-content={t("pause")}
-                fill="white"
-                className="w-4 h-4"
-              />
-            )}
-          </Button>
-          <Button
-            id="media-record-button"
-            data-tooltip-id="chat-input-tooltip"
-            data-tooltip-content={t("finish")}
-            onClick={stopRecording}
-            className="rounded-full bg-green-500 hover:bg-green-600 shadow w-8 h-8"
-            size="icon"
-          >
-            <CheckIcon className="w-4 h-4 text-white" />
-          </Button>
-        </div>
-      </div>
-    );
+    return <MediaRecorder />;
   }
 
   if (!currentRecording?.src)
@@ -673,6 +647,7 @@ export const MediaCurrentRecording = () => {
             data-tooltip-content={action.label}
             className="relative p-0 w-full h-full rounded-none"
             onClick={action.onClick}
+            asChild={action.asChild}
           >
             <action.icon className={`w-4 h-4 ${cn(action.iconClassName)}`} />
           </Button>
@@ -732,9 +707,10 @@ export const MediaCurrentRecording = () => {
 
       <Sheet open={detailIsOpen} onOpenChange={(open) => setDetailIsOpen(open)}>
         <SheetContent
+          container="main-panel-content"
           aria-describedby={undefined}
           side="bottom"
-          className="rounded-t-2xl shadow-lg max-h-screen overflow-y-scroll"
+          className="rounded-t-2xl shadow-lg max-h-content overflow-y-scroll"
           displayClose={false}
         >
           <SheetHeader className="flex items-center justify-center -mt-4 mb-2">
@@ -746,7 +722,10 @@ export const MediaCurrentRecording = () => {
             </SheetClose>
           </SheetHeader>
 
-          <RecordingDetail recording={currentRecording} />
+          <RecordingDetail
+            recording={currentRecording}
+            onPlayOrigin={playWord}
+          />
         </SheetContent>
       </Sheet>
     </div>
@@ -799,5 +778,114 @@ export const MediaRecordButton = () => {
         <MicIcon className="w-4 h-4 text-white" />
       )}
     </Button>
+  );
+};
+
+const MediaRecorder = () => {
+  const {
+    mediaRecorder,
+    recordingTime,
+    isPaused,
+    cancelRecording,
+    togglePauseResume,
+    stopRecording,
+  } = useContext(MediaShadowProviderContext);
+  const ref = useRef(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+    null
+  );
+
+  const calContainerSize = () => {
+    const size = ref?.current?.getBoundingClientRect();
+    if (!size) return;
+
+    setSize({ width: size.width, height: size.height });
+  };
+  const debouncedCalContainerSize = debounce(calContainerSize, 100);
+
+  useEffect(() => {
+    if (!ref?.current) return;
+
+    let rafId: number;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        debouncedCalContainerSize();
+      });
+    });
+    observer.observe(ref.current);
+
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(rafId);
+    };
+  }, [ref]);
+
+  return (
+    <div
+      ref={ref}
+      className="w-full h-full flex justify-center items-center gap-4 border rounded-xl shadow"
+    >
+      {size?.width && size?.width > 1024 && (
+        <LiveAudioVisualizer
+          mediaRecorder={mediaRecorder}
+          barWidth={2}
+          gap={2}
+          width={480}
+          height="100%"
+          fftSize={512}
+          maxDecibels={-10}
+          minDecibels={-80}
+          smoothingTimeConstant={0.4}
+        />
+      )}
+      <span className="serif text-muted-foreground text-sm">
+        {Math.floor(recordingTime / 60)}:
+        {String(recordingTime % 60).padStart(2, "0")}
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          data-tooltip-id="media-shadow-tooltip"
+          data-tooltip-content={t("cancel")}
+          onClick={cancelRecording}
+          className="rounded-full shadow w-8 h-8 bg-red-500 hover:bg-red-600"
+          variant="secondary"
+          size="icon"
+        >
+          <XIcon fill="white" className="w-4 h-4 text-white" />
+        </Button>
+        <Button
+          onClick={togglePauseResume}
+          className="rounded-full shadow w-8 h-8"
+          size="icon"
+        >
+          {isPaused ? (
+            <PlayIcon
+              data-tooltip-id="media-shadow-tooltip"
+              data-tooltip-content={t("continue")}
+              fill="white"
+              className="w-4 h-4"
+            />
+          ) : (
+            <PauseIcon
+              data-tooltip-id="media-shadow-tooltip"
+              data-tooltip-content={t("pause")}
+              fill="white"
+              className="w-4 h-4"
+            />
+          )}
+        </Button>
+        <Button
+          id="media-record-button"
+          data-tooltip-id="media-shadow-tooltip"
+          data-tooltip-content={t("finish")}
+          onClick={stopRecording}
+          className="rounded-full bg-green-500 hover:bg-green-600 shadow w-8 h-8"
+          size="icon"
+        >
+          <CheckIcon className="w-4 h-4 text-white" />
+        </Button>
+      </div>
+    </div>
   );
 };

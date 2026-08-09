@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { useChatMessage, useTranscribe } from "@renderer/hooks";
+import { useAiCommand, useChatSession, useTranscribe } from "@renderer/hooks";
 import { useAudioRecorder } from "react-audio-voice-recorder";
 import {
-  AISettingsProviderContext,
   AppSettingsProviderContext,
   MediaShadowProvider,
 } from "@renderer/context";
@@ -24,20 +23,19 @@ import {
   toast,
 } from "@renderer/components/ui";
 import { t } from "i18next";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { ChevronDownIcon } from "lucide-react";
 import { AudioPlayer, RecordingDetail } from "@renderer/components";
-import { CHAT_SYSTEM_PROMPT_TEMPLATE } from "@/constants";
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
-
-dayjs.extend(relativeTime);
+import { Tooltip } from "react-tooltip";
+import { ChatMessageRoleEnum, ChatMessageStateEnum } from "@/types/enums";
 
 type ChatSessionProviderState = {
+  chat: ChatType;
   chatMessages: ChatMessageType[];
+  chatMembers: ChatMemberType[];
+  chatAgents: ChatAgentType[];
   dispatchChatMessages: React.Dispatch<any>;
   submitting: boolean;
+  asking: ChatMemberType;
   startRecording: () => void;
   stopRecording: () => void;
   cancelRecording: () => void;
@@ -47,26 +45,37 @@ type ChatSessionProviderState = {
   recordingTime: number;
   mediaRecorder: MediaRecorder;
   recordingBlob: Blob;
-  askAgent: () => Promise<any>;
+  askAgent: (options?: {
+    member?: ChatMemberType;
+    force?: boolean;
+  }) => Promise<any>;
   shadowing: AudioType;
   setShadowing: (audio: AudioType) => void;
   assessing: RecordingType;
   setAssessing: (recording: RecordingType) => void;
-  onDeleteMessage?: (id: string) => void;
-  onCreateMessage?: (
+  deleteMessage?: (id: string) => void;
+  createMessage?: (
     content: string,
-    recordingUrl?: string
+    options: {
+      mentions?: string[];
+      onSuccess?: (message: ChatMessageType) => void;
+      onError?: (error: Error) => void;
+    }
   ) => Promise<ChatMessageType | void>;
-  onUpdateMessage?: (
+  updateMessage?: (
     id: string,
     data: Partial<ChatMessageType>
   ) => Promise<ChatMessageType>;
 };
 
 const initialState: ChatSessionProviderState = {
+  chat: null,
   chatMessages: [],
+  chatMembers: [],
+  chatAgents: [],
   dispatchChatMessages: () => null,
   submitting: false,
+  asking: null,
   startRecording: () => null,
   stopRecording: () => null,
   cancelRecording: () => null,
@@ -81,8 +90,8 @@ const initialState: ChatSessionProviderState = {
   setShadowing: () => null,
   assessing: null,
   setAssessing: () => null,
-  onCreateMessage: () => null,
-  onUpdateMessage: () => null,
+  createMessage: () => null,
+  updateMessage: () => null,
 };
 
 export const ChatSessionProviderContext =
@@ -90,25 +99,30 @@ export const ChatSessionProviderContext =
 
 export const ChatSessionProvider = ({
   children,
-  chat,
+  chatId,
 }: {
   children: React.ReactNode;
-  chat: ChatType;
+  chatId: string;
 }) => {
-  const { EnjoyApp, user, apiUrl, recorderConfig } = useContext(
+  const { EnjoyApp, recorderConfig, learningLanguage } = useContext(
     AppSettingsProviderContext
   );
-  const { openai } = useContext(AISettingsProviderContext);
   const [submitting, setSubmitting] = useState(false);
   const [shadowing, setShadowing] = useState<AudioType>(null);
+  const [asking, setAsking] = useState<ChatMemberType>(null);
   const [assessing, setAssessing] = useState<RecordingType>(null);
   const {
+    chat,
+    chatAgents,
+    chatMembers,
     chatMessages,
     dispatchChatMessages,
-    onCreateUserMessage,
-    onUpdateMessage,
-    onDeleteMessage,
-  } = useChatMessage(chat);
+    updateMessage,
+    deleteMessage,
+    invokeAgent,
+    buildAgentMember,
+  } = useChatSession(chatId);
+
   const [deletingMessage, setDeletingMessage] = useState<string>(null);
   const [cancelingRecording, setCancelingRecording] = useState(false);
 
@@ -126,6 +140,7 @@ export const ChatSessionProvider = ({
   });
 
   const { transcribe } = useTranscribe();
+  const { summarizeTopic } = useAiCommand();
 
   const cancelRecording = () => {
     setCancelingRecording(true);
@@ -139,13 +154,63 @@ export const ChatSessionProvider = ({
     });
   };
 
-  const onCreateMessage = async (content: string, recordingUrl?: string) => {
+  const createMessage = async (
+    content: string,
+    options: {
+      mentions?: string[];
+      onSuccess?: (message: ChatMessageType) => void;
+      onError?: (error: Error) => void;
+    } = {}
+  ) => {
+    const { onSuccess, onError, mentions } = options;
     if (submitting) return;
 
     setSubmitting(true);
-    return onCreateUserMessage(content, recordingUrl).finally(() =>
-      setSubmitting(false)
-    );
+    const joined = await ensureAllMentionsJoined(mentions);
+    if (!joined) {
+      setSubmitting(false);
+      return;
+    }
+    EnjoyApp.chatMessages
+      .create({
+        chatId,
+        content,
+        role: ChatMessageRoleEnum.USER,
+        state: ChatMessageStateEnum.PENDING,
+        mentions,
+      })
+      .then((message) => {
+        if (message) {
+          onSuccess?.(message);
+        }
+      })
+      .catch((error) => {
+        toast.error(error.message);
+        onError?.(error);
+      })
+      .finally(() => {
+        setSubmitting(false);
+      });
+  };
+
+  const ensureAllMentionsJoined = async (mentions: string[]) => {
+    if (!mentions || mentions.length === 0) return true;
+
+    const unJoinedMentions = mentions.filter((userId) => {
+      return chatMembers.findIndex((m) => m.userId === userId) === -1;
+    });
+
+    try {
+      for (const userId of unJoinedMentions) {
+        const memberDto = await buildAgentMember(userId);
+        memberDto.config.replyOnlyWhenMentioned = true;
+        await EnjoyApp.chatMembers.create(memberDto);
+      }
+      return true;
+    } catch (error) {
+      toast.error(error.message);
+      return false;
+    }
   };
 
   const onRecorded = async (blob: Blob) => {
@@ -155,135 +220,121 @@ export const ChatSessionProvider = ({
     }
     if (submitting) return;
 
+    const pendingMessage = chatMessages.find(
+      (m) =>
+        m.role === ChatMessageRoleEnum.USER &&
+        m.state === ChatMessageStateEnum.PENDING
+    );
+
     try {
       setSubmitting(true);
       const { transcript, url } = await transcribe(blob, {
-        language: chat.language,
+        language: learningLanguage,
         service: chat.config.sttEngine,
         align: false,
       });
-      return onCreateMessage(transcript, url).finally(() =>
-        setSubmitting(false)
-      );
+
+      if (pendingMessage) {
+        await EnjoyApp.chatMessages.update(pendingMessage.id, {
+          content: transcript,
+          recordingUrl: url,
+        });
+      } else {
+        await EnjoyApp.chatMessages.create({
+          chatId,
+          content: transcript,
+          role: ChatMessageRoleEnum.USER,
+          state: ChatMessageStateEnum.PENDING,
+          recordingUrl: url,
+        });
+      }
     } catch (error) {
       toast.error(error.message);
+    } finally {
       setSubmitting(false);
     }
   };
 
-  const askAgent = async (member?: ChatMemberType) => {
-    // check if there is a pending message
-    const pendingMessage = chatMessages.find(
-      (m) => m.member.user && m.state === "pending"
-    );
-    if (pendingMessage) {
-      onUpdateMessage(pendingMessage.id, { state: "completed" });
+  const askAgent = async (options?: {
+    member?: ChatMemberType;
+    force?: boolean;
+  }) => {
+    if (asking) return;
+
+    let { member, force = false } = options || {};
+
+    if (!member) {
+      member = pickNextAgentMember();
     }
 
-    // pick an random agent
-    if (!member) {
-      const members = chat.members.filter(
-        (member) =>
-          member.userType === "Agent" &&
-          member.id !== chatMessages[chatMessages.length - 1]?.member?.id
+    // In a group chat, agents may talk to each other.
+    if (!member && force && chat.members.length > 1) {
+      member = chat.members.find(
+        (m) =>
+          m.userType === "ChatAgent" &&
+          m.id !== chatMessages[chatMessages.length - 1]?.member?.id
       );
-      member = members[Math.floor(Math.random() * members.length)];
     }
 
     if (!member) {
-      return toast.warning(t("itsYourTurn"));
+      return;
     }
 
+    setSubmitting(true);
+    setAsking(member);
     try {
-      const llm = buildLlm(member.agent);
-      const prompt = ChatPromptTemplate.fromMessages([
-        ["system", CHAT_SYSTEM_PROMPT_TEMPLATE],
-        ["user", "{input}"],
-      ]);
-      const chain = prompt.pipe(llm);
-
-      setSubmitting(true);
-      const lastChatMessage = chatMessages[chatMessages.length - 1];
-      const reply = await chain.invoke({
-        name: member.agent.name,
-        agent_prompt: member.agent.config.prompt || "",
-        agent_chat_prompt: member.config.prompt || "",
-        language: chat.language,
-        topic: chat.topic,
-        members: chat.members
-          .map((m) => {
-            if (m.user) {
-              return `- ${m.user.name} (${m.config.introduction})`;
-            } else if (m.agent) {
-              return `- ${m.agent.name} (${m.agent.introduction})`;
-            }
-          })
-          .join("\n"),
-        history: chatMessages
-          .slice(0, chatMessages.length - 1)
-          .map(
-            (message) =>
-              `- ${(message.member.user || message.member.agent).name}: ${
-                message.content
-              }(${dayjs(message.createdAt).fromNow()})`
-          )
-          .join("\n"),
-        input:
-          (lastChatMessage
-            ? `${lastChatMessage.member.name}: ${lastChatMessage.content}\n`
-            : "") + `${member.agent.name}:`,
-      });
-
-      // the reply may contain the member's name like "Agent: xxx". We need to remove it.
-      const content = reply.content
-        .toString()
-        .replace(new RegExp(`^(${member.agent.name}):`), "")
-        .trim();
-
-      return EnjoyApp.chatMessages
-        .create({
-          chatId: chat.id,
-          memberId: member.id,
-          content,
-          state: "completed",
-        })
-        .then((message) =>
-          dispatchChatMessages({ type: "append", record: message })
-        )
-        .catch((error) => {
-          toast.error(error.message);
-        })
-        .finally(() => setSubmitting(false));
-    } catch (err) {
+      await invokeAgent(member.id);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
       setSubmitting(false);
-      toast.error(err.message);
+      setAsking(null);
     }
   };
 
-  const buildLlm = (agent: ChatAgentType) => {
-    const { engine, model, temperature } = agent.config;
+  const pickNextAgentMember = () => {
+    const members = chat.members;
+    const messages = chatMessages.filter(
+      (m) =>
+        m.role === ChatMessageRoleEnum.AGENT ||
+        m.role === ChatMessageRoleEnum.USER
+    );
+    let currentIndex = messages.length - 1;
+    const spokeMembers = new Set();
+    let lastUserMessage: ChatMessageType = null;
 
-    if (engine === "enjoyai") {
-      return new ChatOpenAI({
-        openAIApiKey: user.accessToken,
-        configuration: {
-          baseURL: `${apiUrl}/api/ai`,
-        },
-        maxRetries: 0,
-        modelName: model,
-        temperature,
-      });
-    } else if (engine === "openai") {
-      return new ChatOpenAI({
-        openAIApiKey: openai.key,
-        configuration: {
-          baseURL: openai.baseUrl,
-        },
-        maxRetries: 0,
-        modelName: model,
-        temperature,
-      });
+    while (currentIndex >= 0) {
+      const message = messages[currentIndex];
+      if (
+        message.role === ChatMessageRoleEnum.AGENT &&
+        spokeMembers.has(message.member?.id)
+      ) {
+        break;
+      }
+      if (message.role === ChatMessageRoleEnum.USER) {
+        lastUserMessage = message;
+        break;
+      }
+      if (!message.member) break;
+
+      spokeMembers.add(message.member.id);
+      currentIndex--;
     }
+
+    // If the last user message mentions some members, pick one of them that has not spoken yet
+    if (lastUserMessage && lastUserMessage.mentions.length > 0) {
+      return members.find(
+        (member) =>
+          lastUserMessage.mentions.includes(member.userId) &&
+          !spokeMembers.has(member.id)
+      );
+    }
+
+    // pick a member that has not spoken yet
+    return members.find(
+      (member) =>
+        !member.config.replyOnlyWhenMentioned && !spokeMembers.has(member.id)
+    );
   };
 
   const onAssess = (assessment: PronunciationAssessmentType) => {
@@ -302,6 +353,32 @@ export const ChatSessionProvider = ({
         },
       },
     });
+  };
+
+  const updateChatName = async () => {
+    if (
+      chatMessages.filter((m) => m.role === ChatMessageRoleEnum.AGENT).length <
+      1
+    )
+      return;
+
+    const content = chatMessages
+      .filter(
+        (m) =>
+          m.role === ChatMessageRoleEnum.AGENT ||
+          m.role === ChatMessageRoleEnum.USER
+      )
+      .slice(0, 10)
+      .map((m) => m.content)
+      .join("\n");
+    try {
+      const topic = await summarizeTopic(content);
+      if (topic) {
+        EnjoyApp.chats.update(chat.id, { name: topic });
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
   };
 
   useEffect(() => {
@@ -328,12 +405,29 @@ export const ChatSessionProvider = ({
     }
   }, [recordingTime]);
 
+  useEffect(() => {
+    if (!chat) return;
+
+    // Automatically update the chat name
+    if (
+      chat.name === t("newChat") &&
+      chatMessages.filter((m) => m.role === ChatMessageRoleEnum.AGENT).length >
+        0
+    ) {
+      updateChatName();
+    }
+  }, [chatMessages]);
+
   return (
     <ChatSessionProviderContext.Provider
       value={{
+        chat,
         chatMessages,
+        chatMembers,
+        chatAgents,
         dispatchChatMessages,
         submitting,
+        asking,
         startRecording,
         stopRecording,
         cancelRecording,
@@ -348,13 +442,13 @@ export const ChatSessionProvider = ({
         setShadowing,
         assessing,
         setAssessing,
-        onDeleteMessage: (id) => setDeletingMessage(id),
-        onCreateMessage,
-        onUpdateMessage,
+        deleteMessage: (id) => setDeletingMessage(id),
+        createMessage,
+        updateMessage,
       }}
     >
-      <MediaShadowProvider>
-        {children}
+      <MediaShadowProvider onCancel={() => setShadowing(null)}>
+        {chat && children}
 
         <AlertDialog
           open={Boolean(deletingMessage)}
@@ -372,14 +466,13 @@ export const ChatSessionProvider = ({
 
             <AlertDialogFooter>
               <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => onDeleteMessage(deletingMessage)}
-              >
+              <AlertDialogAction onClick={() => deleteMessage(deletingMessage)}>
                 {t("confirm")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
         <Sheet
           modal={false}
           open={Boolean(shadowing)}
@@ -388,13 +481,14 @@ export const ChatSessionProvider = ({
           }}
         >
           <SheetContent
+            container="main-panel-content"
             side="bottom"
-            className="h-screen p-0 flex flex-col"
+            className="h-content p-0 flex flex-col gap-0"
             displayClose={false}
             onPointerDownOutside={(event) => event.preventDefault()}
             onInteractOutside={(event) => event.preventDefault()}
           >
-            <SheetHeader className="flex items-center justify-center">
+            <SheetHeader className="flex items-center justify-center space-y-0 py-1">
               <SheetTitle className="sr-only">Shadow</SheetTitle>
               <SheetDescription className="sr-only"></SheetDescription>
               <SheetClose>
@@ -413,9 +507,10 @@ export const ChatSessionProvider = ({
           }}
         >
           <SheetContent
+            container="main-panel-content"
             aria-describedby={undefined}
             side="bottom"
-            className="rounded-t-2xl shadow-lg max-h-screen overflow-y-scroll"
+            className="rounded-t-2xl shadow-lg max-h-content overflow-y-scroll"
             displayClose={false}
           >
             <SheetHeader className="flex items-center justify-center -mt-4 mb-2">
@@ -434,6 +529,7 @@ export const ChatSessionProvider = ({
           </SheetContent>
         </Sheet>
       </MediaShadowProvider>
+      <Tooltip id={`${chatId}-tooltip`} />
     </ChatSessionProviderContext.Provider>
   );
 };

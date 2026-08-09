@@ -135,10 +135,33 @@ export function renderPitchContour(options: {
   });
 }
 
+export function isSameTimeRange(time1: Date | string, time2: Date | string) {
+  if (dayjs(time1).isSame(time2, "day")) {
+    return dayjs(time1).isSame(time2, "hour");
+  } else if (dayjs(time1).diff(time2, "week") < 1) {
+    return dayjs(time1).isSame(time2, "day");
+  } else if (dayjs(time1).diff(time2, "month") < 1) {
+    return dayjs(time1).isSame(time2, "week");
+  } else if (dayjs(time1).diff(time2, "year") < 1) {
+    return dayjs(time1).isSame(time2, "month");
+  } else {
+    return dayjs(time1).isSame(time2, "year");
+  }
+}
+
 export function imgErrorToDefalut(
   e: React.SyntheticEvent<HTMLImageElement, Event>
 ) {
   const target = e.target as HTMLImageElement;
   target.onerror = null;
   target.src = "assets/default-img.jpg";
+}
+
+export function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

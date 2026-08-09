@@ -9,9 +9,14 @@ export const EnrollmentSegment = () => {
   const { webApi } = useContext(AppSettingsProviderContext);
   const [enrollments, setEnrollments] = useState<EnrollmentType[]>([]);
   const fetchEnrollments = async () => {
-    webApi.enrollments().then(({ enrollments }) => {
-      setEnrollments(enrollments);
-    });
+    webApi
+      .enrollments()
+      .then(({ enrollments }) => {
+        setEnrollments(enrollments);
+      })
+      .catch((err) => {
+        console.error(err.message);
+      });
   };
 
   useEffect(() => {
@@ -38,7 +43,7 @@ export const EnrollmentSegment = () => {
       </div>
 
       <ScrollArea>
-        <div className="flex items-center space-x-4 pb-4">
+        <div className="flex w-max items-center space-x-4 pb-4">
           {enrollments.map((enrollment) => {
             return (
               <CourseCard

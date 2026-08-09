@@ -15,8 +15,38 @@ export default defineConfig((env) => {
   const forgeEnv = env as ConfigEnv<"build">;
   const { forgeConfigSelf } = forgeEnv;
   const define = getBuildDefine(forgeEnv);
+  const staticCopyTargets = [
+    {
+      src: `lib/youtubedr/${
+        process.env.PACKAGE_OS_ARCH || os.arch()
+      }/${os.platform()}/*`,
+      dest: "lib/youtubedr",
+    },
+    {
+      src: "lib/dictionaries/*",
+      dest: "lib/dictionaries",
+    },
+    {
+      src: "src/main/db/migrations/*",
+      dest: "migrations",
+    },
+    {
+      src: "samples/*",
+      dest: "samples",
+    },
+  ];
+
+  if (os.platform() === "darwin") {
+    staticCopyTargets.push({
+      src: `lib/whisper.cpp/${
+        process.env.PACKAGE_OS_ARCH || os.arch()
+      }/${os.platform()}/*`,
+      dest: "lib/whisper",
+    });
+  }
   const config: UserConfig = {
     build: {
+      sourcemap: true,
       lib: {
         entry: forgeConfigSelf.entry!,
         fileName: () => "[name].js",
@@ -28,6 +58,7 @@ export default defineConfig((env) => {
           "echogarden/dist/api/API.js",
           "echogarden/dist/audio/AudioUtilities.js",
           "echogarden/dist/utilities/Timeline.js",
+          "echogarden/dist/utilities/PackageManager.js",
         ],
         output: {
           strict: false,
@@ -43,36 +74,7 @@ export default defineConfig((env) => {
     plugins: [
       pluginHotRestart("restart"),
       viteStaticCopy({
-        targets: [
-          {
-            src: `lib/whisper.cpp/${
-              process.env.PACKAGE_OS_ARCH || os.arch()
-            }/${os.platform()}/*`,
-            dest: "lib/whisper",
-          },
-          {
-            src: `lib/whisper.cpp/models/*`,
-            dest: "lib/whisper/models",
-          },
-          {
-            src: `lib/youtubedr/${
-              process.env.PACKAGE_OS_ARCH || os.arch()
-            }/${os.platform()}/*`,
-            dest: "lib/youtubedr",
-          },
-          {
-            src: "lib/dictionaries/*",
-            dest: "lib/dictionaries",
-          },
-          {
-            src: "src/main/db/migrations/*",
-            dest: "migrations",
-          },
-          {
-            src: "samples/*",
-            dest: "samples",
-          },
-        ],
+        targets: staticCopyTargets,
       }),
     ],
     define,

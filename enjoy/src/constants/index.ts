@@ -1,9 +1,21 @@
+export * from "./chat-agent-templates";
 export * from "./gpt-presets";
 export * from "./ipa";
 
-// https://hf-mirror.com/ggerganov/whisper.cpp/tree/main
-import whisperModels from "./whisper-models.json";
-export const WHISPER_MODELS_OPTIONS = whisperModels;
+export const WHISPER_MODELS = [
+  "tiny",
+  "tiny.en",
+  "base",
+  "base.en",
+  "small",
+  "small.en",
+  "medium",
+  "medium.en",
+  "large-v1",
+  "large-v2",
+  "large-v3",
+  "large-v3-turbo",
+];
 
 import languages from "./languages.json";
 export const LANGUAGES = languages;
@@ -21,12 +33,12 @@ export const AI_WORKER_ENDPOINT = "https://ai-worker.enjoy.bot";
 
 export const WEB_API_URL = "https://enjoy.bot";
 export const WS_URL = "wss://enjoy.bot";
+export const DISCUSS_URL = "https://discuss.enjoy.bot";
+
+export const DOWNLOAD_URL = "https://1000h.org/enjoy-app/install.html";
 
 export const REPO_URL =
   "https://github.com/zuodaotech/everyone-can-use-english";
-
-export const SENTRY_DSN =
-  "https://d51056d7af7d14eae446c0c15b4f3d31@o1168905.ingest.us.sentry.io/4506969353289728";
 
 export const MAGIC_TOKEN_REGEX =
   /\b(Mrs|Ms|Mr|Dr|Prof|St|[a-zA-Z]{1,2}|\d{1,2})\.\b/g;
@@ -50,6 +62,8 @@ export const AudioFormats = ["mp3", "wav", "ogg", "flac", "m4a", "wma", "aac"];
 
 export const VideoFormats = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm"];
 
+export const DocumentFormats = ["epub", "md", "markdown", "html", "txt"];
+
 export const PROCESS_TIMEOUT = 1000 * 60 * 15;
 
 export const NOT_SUPPORT_JSON_FORMAT_MODELS = [
@@ -58,28 +72,25 @@ export const NOT_SUPPORT_JSON_FORMAT_MODELS = [
   "gpt-4-32k",
 ];
 
-export const CHAT_SYSTEM_PROMPT_TEMPLATE = `You are {name}. 
-{agent_prompt}
-{agent_chat_prompt}
+export const CHAT_GROUP_PROMPT_TEMPLATE = `You are {name} in this chat. You should reply to everyone in this chat and always stay in character.
 
-[Rules must be followed]
-1. Always reply in {language}.
-2. Reply in your personality style and talk in casual way.
-3. Reply what you would say only, do not include any other format.
+[Recent Chat History]
+{history}`;
 
-[Chat Topic]
-{topic}
-
-[Chat Members]
-{members}
-
-[Chat History]
-{history}
-`;
+export const DEFAULT_GPT_CONFIG = {
+  model: "gpt-4o",
+  engine: "enjoyai",
+  temperature: 0.8,
+  historyBufferSize: 10,
+  maxCompletionTokens: -1,
+  presencePenalty: 0,
+  frequencyPenalty: 0,
+  numberOfChoices: 1,
+};
 
 export const AGENT_FIXTURE_AVA = {
   name: "Ava",
-  introduction: "I'm Ava, your English speaking teacher.",
+  description: "I'm Ava, your English speaking teacher.",
   language: "en-US",
   config: {
     engine: "enjoyai",
@@ -95,7 +106,7 @@ export const AGENT_FIXTURE_AVA = {
 
 export const AGENT_FIXTURE_ANDREW = {
   name: "Andrew",
-  introduction: "I'm Andrew, your American friend.",
+  description: "I'm Andrew, your American friend.",
   language: "en-US",
   config: {
     engine: "enjoyai",
@@ -107,4 +118,14 @@ export const AGENT_FIXTURE_ANDREW = {
     ttsModel: "azure/speech",
     ttsVoice: "en-US-AndrewNeural",
   },
+};
+
+export const MIME_TYPES: Record<string, string> = {
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".wma": "audio/x-ms-wma",
 };

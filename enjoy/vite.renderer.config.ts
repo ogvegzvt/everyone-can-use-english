@@ -16,7 +16,9 @@ export default defineConfig((env) => {
     mode,
     base: "./",
     build: {
+      sourcemap: true,
       outDir: `.vite/renderer/${name}`,
+      target: "esnext",
     },
     plugins: [
       pluginExposeRenderer(name),
@@ -27,18 +29,6 @@ export default defineConfig((env) => {
             src: "assets/*",
             dest: "assets",
           },
-          {
-            src: "node_modules/@ricky0123/vad-web/dist/vad.worklet.bundle.min.js",
-            dest: "./",
-          },
-          {
-            src: "node_modules/@ricky0123/vad-web/dist/silero_vad.onnx",
-            dest: "./",
-          },
-          {
-            src: "node_modules/onnxruntime-web/dist/*.wasm",
-            dest: "./",
-          },
         ],
       }),
     ],
@@ -48,10 +38,17 @@ export default defineConfig((env) => {
         "@": path.resolve(__dirname, "./src"),
         "@renderer": path.resolve(__dirname, "./src/renderer"),
         "@commands": path.resolve(__dirname, "./src/commands"),
+        "vendor/pdfjs": path.resolve(
+          __dirname,
+          "./node_modules/foliate-js/vendor/pdfjs"
+        ),
       },
     },
     optimizeDeps: {
       exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+      esbuildOptions: {
+        target: "esnext",
+      },
     },
     clearScreen: false,
   } as UserConfig;

@@ -56,7 +56,7 @@ Peter Norvig 写这篇文章（2001）的几年后，2008 年 11 月，Malcolm G
 
 先请读者做一道 TOEFL 词汇题，然后再讲道理。
 
-> The second possible benefit of communal roots is that they act as "information centers." During the day, parties of birds will have spread out to forage over a very large area. When they return in the evening some will have fed well, but others may have found little to eat.
+> The second possible benefit of communal roosts is that they act as "information centers." During the day, parties of birds will have spread out to forage over a very large area. When they return in the evening some will have fed well, but others may have found little to eat.
 
 > The word "forage" is closest in meaning to which of following?
 

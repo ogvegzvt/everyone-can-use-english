@@ -99,7 +99,7 @@ export const YoutubeVideosSegment = (props: { channel: string }) => {
         <div className="ml-auto mr-4"></div>
       </div>
       <ScrollArea>
-        <div className="flex items-center space-x-4 pb-4">
+        <div className="flex w-max items-center space-x-4 pb-4">
           {videos.map((video) => {
             return (
               <YoutubeVideoCard
@@ -161,7 +161,11 @@ export const YoutubeVideosSegment = (props: { channel: string }) => {
               {submitting && (
                 <LoaderIcon className="w-4 h-4 animate-spin mr-2" />
               )}
-              {t("downloadVideo")}
+              {submitting
+                ? progress < 100
+                  ? t("downloading")
+                  : t("importing")
+                : t("downloadVideo")}
             </Button>
           </DialogFooter>
           {submitting && (

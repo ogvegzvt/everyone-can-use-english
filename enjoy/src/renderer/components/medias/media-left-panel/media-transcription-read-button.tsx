@@ -45,6 +45,7 @@ import {
 import { useRecordings } from "@renderer/hooks";
 import { formatDateTime } from "@renderer/lib/utils";
 import {
+  LoaderSpin,
   MediaCaption,
   RecordingDetail,
   WavesurferPlayer,
@@ -145,7 +146,7 @@ const TranscriptionRecordingsList = () => {
         toast.promise(
           EnjoyApp.download.start(recording.src, savePath as string),
           {
-            loading: t("downloading", { file: recording.filename }),
+            loading: t("downloadingFile", { file: recording.filename }),
             success: () => t("downloadedSuccessfully"),
             error: t("downloadFailed"),
             position: "bottom-right",
@@ -157,12 +158,11 @@ const TranscriptionRecordingsList = () => {
       });
   };
 
-  const {
-    recordings,
-    fetchRecordings,
-    loading: loadingRecordings,
-    hasMore: hasMoreRecordings,
-  } = useRecordings(media, -1);
+  const { recordings, loading: loadingRecordings } = useRecordings(media, -1);
+
+  if (loadingRecordings) {
+    return <LoaderSpin />;
+  }
 
   return (
     <div>
@@ -223,19 +223,6 @@ const TranscriptionRecordingsList = () => {
           <WavesurferPlayer id={recording.id} src={recording.src} />
         </div>
       ))}
-      {hasMoreRecordings && (
-        <div className="flex items-center justify-center">
-          <Button
-            variant="secondary"
-            onClick={() => fetchRecordings(recordings.length)}
-          >
-            {loadingRecordings && (
-              <LoaderIcon className="w-4 h-4 animate-spin" />
-            )}
-            <span>{t("loadMore")}</span>
-          </Button>
-        </div>
-      )}
 
       <Sheet
         open={Boolean(assessing)}
@@ -246,7 +233,7 @@ const TranscriptionRecordingsList = () => {
         <SheetContent
           aria-describedby={undefined}
           side="bottom"
-          className="rounded-t-2xl shadow-lg max-h-screen overflow-y-scroll"
+          className="rounded-t-2xl shadow-lg max-h-content overflow-y-scroll"
           displayClose={false}
         >
           <SheetHeader className="flex items-center justify-center -mt-4 mb-2">
@@ -339,14 +326,14 @@ const RecorderButton = () => {
           >
             {isPaused ? (
               <PlayIcon
-                data-tooltip-id="chat-input-tooltip"
+                data-tooltip-id="media-shadow-tooltip"
                 data-tooltip-content={t("continue")}
                 fill="white"
                 className="w-4 h-4"
               />
             ) : (
               <PauseIcon
-                data-tooltip-id="chat-input-tooltip"
+                data-tooltip-id="media-shadow-tooltip"
                 data-tooltip-content={t("pause")}
                 fill="white"
                 className="w-4 h-4"
@@ -354,7 +341,7 @@ const RecorderButton = () => {
             )}
           </Button>
           <Button
-            data-tooltip-id="chat-input-tooltip"
+            data-tooltip-id="media-shadow-tooltip"
             data-tooltip-content={t("finish")}
             onClick={stopRecording}
             className="rounded-full bg-green-500 hover:bg-green-600 shadow w-8 h-8"

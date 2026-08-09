@@ -14,30 +14,28 @@ AI 是当今世界上最好的外语老师，Enjoy 做 AI 最好的助教。
 
 ---
 
-## 安装及使用
+## 网页版
 
-下载及使用相关说明，请参阅 [文档](https://1000h.org/enjoy-app/)。
+Enjoy 全新版本已经上线，可访问 [https://enjoy.bot](https://enjoy.bot) 直接使用。
 
-## 预览
+![](./enjoy/snapshots/screenshot-video.png)
+![](./enjoy/snapshots/screenshot-ebook.png)
+![](./enjoy/snapshots/screenshot-flashcard.png)
+![](./enjoy/snapshots/screenshot-course.png)
 
-<div align="center" style="display:flex;overflow:auto;">
-  <img src="./enjoy/snapshots/home.png" alt="Home" width="800" />
+## 浏览器插件
 
-  <img src="./enjoy/snapshots/shadow.png" alt="Home" width="800" />
+Enjoy 浏览器插件已经上线，支持 YouTube 和 Netflix。可访问 [Chrome Web Store](https://chromewebstore.google.com/detail/enjoy-echo/hiijpdndbjfnffibdhajdanjekbnalob) 安装使用。
 
-  <img src="./enjoy/snapshots/assessment.png" alt="Home" width="800" />
+![](./enjoy/snapshots/screenshot-youtube.png)
+![](./enjoy/snapshots/screenshot-netflix.png)
 
-  <img src="./enjoy/snapshots/course.png" alt="Home" width="800" />
+---
 
-  <img src="./enjoy/snapshots/chat.png" alt="Home" width="800" />
-</div>
+## 桌面版
 
-## 开发
+新版桌面版将会是对网页版的套壳和增强，即将发布。
 
-```bash
-yarn install
-yarn enjoy:start
-```
 
 ## 相关阅读
 

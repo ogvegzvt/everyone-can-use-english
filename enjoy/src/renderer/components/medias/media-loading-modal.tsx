@@ -7,7 +7,6 @@ import {
   AlertDialogTitle,
   AlertDialogContent,
   AlertDialogFooter,
-  AlertDialogOverlay,
   Button,
   Tabs,
   TabsContent,
@@ -16,7 +15,6 @@ import {
 } from "@renderer/components/ui";
 import { CircleAlertIcon, LoaderIcon } from "lucide-react";
 import { t } from "i18next";
-import { useNavigate } from "react-router-dom";
 import { TranscriptionCreateForm, TranscriptionsList } from "../transcriptions";
 import { SttEngineOptionEnum } from "@/types/enums";
 
@@ -25,7 +23,6 @@ export const MediaLoadingModal = () => {
 
   return (
     <AlertDialog open={!decoded || !Boolean(transcription?.result?.timeline)}>
-      <AlertDialogOverlay />
       <AlertDialogContent className="max-h-[70%] overflow-y-auto">
         <AlertDialogHeader>
           <AlertDialogTitle>{t("preparingAudio")}</AlertDialogTitle>
@@ -40,7 +37,6 @@ export const MediaLoadingModal = () => {
 };
 
 const LoadingContent = () => {
-  const navigate = useNavigate();
   const {
     media,
     decoded,
@@ -50,6 +46,7 @@ const LoadingContent = () => {
     transcribingProgress,
     transcribingOutput,
     generateTranscription,
+    onCancel,
   } = useContext(MediaShadowProviderContext);
   if (decoded) {
     // Decoded and transcription created but not ready
@@ -73,7 +70,7 @@ const LoadingContent = () => {
                   isolate: data.isolate,
                 });
               }}
-              onCancel={() => navigate(-1)}
+              onCancel={onCancel}
               transcribing={transcribing}
               transcribingProgress={transcribingProgress}
               transcribingOutput={transcribingOutput}
@@ -108,7 +105,7 @@ const LoadingContent = () => {
           </div>
         </div>
         <AlertDialogFooter>
-          <Button variant="secondary" onClick={() => navigate(-1)}>
+          <Button variant="secondary" onClick={onCancel}>
             {t("cancel")}
           </Button>
         </AlertDialogFooter>
@@ -131,7 +128,7 @@ const LoadingContent = () => {
           )}
         </div>
         <AlertDialogFooter>
-          <Button variant="secondary" onClick={() => navigate(-1)}>
+          <Button variant="secondary" onClick={onCancel}>
             {t("cancel")}
           </Button>
         </AlertDialogFooter>

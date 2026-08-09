@@ -14,9 +14,11 @@ export const summarizeTopicCommand = async (
 ): Promise<string> => {
   if (!text) throw new Error("Text is required");
 
+  const formattedText = text.replace(/\{/g, "{{").replace(/\}/g, "}}");
+
   const prompt = await ChatPromptTemplate.fromMessages([
     ["system", SYSTEM_PROMPT],
-    ["human", text],
+    ["human", formattedText],
   ]).format({
     learning_language: LANGUAGES.find((l) => l.code === learningLanguage).name,
   });
@@ -25,4 +27,4 @@ export const summarizeTopicCommand = async (
 };
 
 const SYSTEM_PROMPT =
-  "Please generate a four to five words title summarizing our conversation in {learning_language} without any lead-in, punctuation, quotation marks, periods, symbols, bold text, or additional text. Remove enclosing quotation marks.";
+  "Please generate a four to five words title summarizing our conversation without any lead-in, punctuation, quotation marks, periods, symbols, bold text, or additional text. Remove enclosing quotation marks. Please use the main language of the text.";

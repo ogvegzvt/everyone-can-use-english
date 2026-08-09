@@ -13,12 +13,35 @@ type EnjoyAppType = {
     createIssue: (title: string, body: string) => Promise<void>;
     onCmdOutput: (callback: (event, output: string) => void) => void;
     removeCmdOutputListeners: () => void;
+    checkForUpdates: () => Promise<void>;
+    quitAndInstall: () => Promise<void>;
+    onUpdater: (
+      callback: (
+        event: IpcRendererEvent,
+        eventType: string,
+        args: any[]
+      ) => void
+    ) => void;
+    removeUpdaterListeners: () => void;
     diskUsage: () => Promise<DiskUsageType>;
     version: string;
   };
   window: {
-    onResize: (callback: (event, bounds: any) => void) => void;
-    removeListeners: () => void;
+    onChange: (
+      callback: (event, state: { event: string; state: any }) => void
+    ) => void;
+    toggleMaximized: () => Promise<void>;
+    isMaximized: () => Promise<boolean>;
+    maximize: () => Promise<void>;
+    unmaximize: () => Promise<void>;
+    fullscreen: () => Promise<void>;
+    unfullscreen: () => Promise<void>;
+    minimize: () => Promise<void>;
+    close: () => Promise<void>;
+    removeListener: (
+      listener: (event: IpcRendererEvent, ...args: any[]) => void
+    ) => void;
+    removeAllListeners: () => void;
   };
   system: {
     preferences: {
@@ -27,6 +50,7 @@ type EnjoyAppType = {
     proxy: {
       get: () => Promise<ProxyConfigType>;
       set: (config: ProxyConfigType) => Promise<void>;
+      refresh: () => Promise<void>;
     };
   };
   providers: {
@@ -63,10 +87,25 @@ type EnjoyAppType = {
         navigatable?: boolean;
       }
     ) => Promise<void>;
-    show: (bounds: any) => Promise<void>;
+    show: (bounds?: any) => Promise<void>;
     hide: () => Promise<void>;
     remove: () => Promise<void>;
     scrape: (url: string) => Promise<void>;
+    loadCommunity: (
+      bounds: { x: number; y: number; width: number; height: number },
+      options?: {
+        navigatable?: boolean;
+        accessToken?: string;
+        url?: string;
+        ssoUrl?: string;
+      }
+    ) => Promise<void>;
+    resize: (bounds: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }) => Promise<void>;
     onViewState: (
       callback: (
         event,
@@ -195,6 +234,13 @@ type EnjoyAppType = {
     create: (params: any) => Promise<RecordingType>;
     update: (id: string, params: any) => Promise<RecordingType | undefined>;
     destroy: (id: string) => Promise<void>;
+    destroyBulk: (where: any) => Promise<void>;
+    statsForDeleteBulk: () => Promise<{
+      noAssessment: string[];
+      scoreLessThan90: string[];
+      scoreLessThan80: string[];
+      all: string[];
+    }>;
     upload: (id: string) => Promise<void>;
     stats: (params: { from: string; to: string }) => Promise<{
       count: number;
@@ -236,6 +282,7 @@ type EnjoyAppType = {
     create: (params: any) => Promise<ConversationType>;
     update: (id: string, params: any) => Promise<ConversationType>;
     destroy: (id: string) => Promise<void>;
+    migrate: (id: string) => Promise<void>;
   };
   messages: {
     findAll: (params: any) => Promise<MessageType[]>;
@@ -251,6 +298,8 @@ type EnjoyAppType = {
         sourceId: string;
         sourceType: string;
         text: string;
+        section?: number;
+        segment?: number;
         configuration: {
           engine: string;
           model: string;
@@ -262,8 +311,14 @@ type EnjoyAppType = {
         arrayBuffer: ArrayBuffer;
       }
     ) => Promise<SpeechType>;
+    delete: (id: string) => Promise<void>;
   };
   echogarden: {
+    getPackagesDir: () => Promise<string>;
+    recognize: (
+      input: string,
+      options: RecognitionOptions
+    ) => Promise<RecognitionResult>;
     align: (
       input: string | Uint8Array,
       transcript: string,
@@ -280,26 +335,11 @@ type EnjoyAppType = {
       language: string
     ) => Promise<Timeline>;
     transcode: (input: string) => Promise<string>;
-    check: () => Promise<boolean>;
-  };
-  whisper: {
-    config: () => Promise<WhisperConfigType>;
-    check: () => Promise<{ success: boolean; log: string }>;
-    setModel: (model: string) => Promise<WhisperConfigType>;
-    transcribe: (
-      params: {
-        file?: string;
-        blob?: { type: string; arrayBuffer: ArrayBuffer };
-      },
-      options?: {
-        language?: string;
-        force?: boolean;
-        extra?: string[];
-      }
-    ) => Promise<Partial<WhisperOutputType>>;
-    onProgress: (callback: (event, progress: number) => void) => void;
-    abort: () => Promise<void>;
-    removeProgressListeners: () => Promise<void>;
+    check: (options?: any) => Promise<{ success: boolean; log: string }>;
+    checkAlign: (options?: any) => Promise<{
+      success: boolean;
+      log: string;
+    }>;
   };
   ffmpeg: {
     check: () => Promise<boolean>;
@@ -332,7 +372,7 @@ type EnjoyAppType = {
     set: (key: string, value: any, ttl?: number) => Promise<void>;
     delete: (key: string) => Promise<void>;
     clear: () => Promise<void>;
-    writeFile: (filename: string, data: ArrayBuffer) => Promise<string>;
+    writeFile: (filename: string, data: Buffer<ArrayBuffer>) => Promise<string>;
   };
   transcriptions: {
     findOrCreate: (params: any) => Promise<TranscriptionType>;
@@ -387,11 +427,27 @@ type EnjoyAppType = {
     update: (id: string, params: any) => Promise<ChatAgentType>;
     destroy: (id: string) => Promise<void>;
   };
+  chatMembers: {
+    findAll: (params: any) => Promise<ChatMemberType[]>;
+    findOne: (params: any) => Promise<ChatMemberType>;
+    create: (params: any) => Promise<ChatMemberType>;
+    update: (id: string, params: any) => Promise<ChatMemberType>;
+    destroy: (id: string) => Promise<void>;
+  };
   chatMessages: {
     findAll: (params: any) => Promise<ChatMessageType[]>;
     findOne: (params: any) => Promise<ChatMessageType>;
     create: (params: any) => Promise<ChatMessageType>;
     update: (id: string, params: any) => Promise<ChatMessageType>;
     destroy: (id: string) => Promise<ChatMessageType>;
+  };
+  documents: {
+    findAll: (params?: any) => Promise<DocumentEType[]>;
+    findOne: (params: any) => Promise<DocumentEType>;
+    create: (params: any) => Promise<DocumentEType>;
+    update: (id: string, params: any) => Promise<DocumentEType>;
+    destroy: (id: string) => Promise<void>;
+    upload: (id: string) => Promise<void>;
+    cleanUp: () => Promise<void>;
   };
 };

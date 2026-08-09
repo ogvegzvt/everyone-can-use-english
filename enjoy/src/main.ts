@@ -6,38 +6,36 @@ import log from "@main/logger";
 import mainWindow from "@main/window";
 import ElectronSquirrelStartup from "electron-squirrel-startup";
 import contextMenu from "electron-context-menu";
+import Bugsnag from "@bugsnag/electron";
 import { t } from "i18next";
-import * as Sentry from "@sentry/electron/main";
-import { SENTRY_DSN } from "@/constants";
-import { updateElectronApp, UpdateSourceType } from "update-electron-app";
+import { Client } from "./api";
 
 const logger = log.scope("main");
 
-if (app.isPackaged) {
-  Sentry.init({
-    dsn: SENTRY_DSN,
+const initBugsnag = async () => {
+  if (!app.isPackaged) return;
+  const webApi = new Client({
+    baseUrl: settings.apiUrl(),
+    logger,
   });
-}
+  try {
+    const apiKey = await webApi.config("bugsnag_api_key");
+    if (!apiKey) return;
+
+    Bugsnag.start({ apiKey: apiKey.bugsnagApiKey });
+  } catch (err) {
+    logger.error(err);
+  }
+};
 
 app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
-
-// config auto updater
-if (!process.env.CI) {
-  updateElectronApp({
-    updateSource: {
-      type: UpdateSourceType.StaticStorage,
-      baseUrl: `https://dl.enjoy.bot/app/${process.platform}/${process.arch}`,
-    },
-    updateInterval: "1 hour",
-    logger: logger,
-    notifyUser: true,
-  });
-}
 
 if (!app.isPackaged) {
   app.disableHardwareAcceleration();
   app.commandLine.appendSwitch("disable-software-rasterizer");
 }
+
+initBugsnag();
 
 // Add context menu
 contextMenu({
@@ -125,7 +123,11 @@ app.on("ready", async () => {
 
   protocol.handle("enjoy", (request) => {
     let url = request.url.replace("enjoy://", "");
-    if (url.match(/library\/(audios|videos|recordings|speeches|segments)/g)) {
+    if (
+      url.match(
+        /library\/(audios|videos|recordings|speeches|segments|documents)/g
+      )
+    ) {
       url = url.replace("library/", "");
       url = path.join(settings.userDataPath(), url);
     } else if (url.startsWith("library")) {

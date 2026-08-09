@@ -69,8 +69,10 @@ class AudiosHandler {
       name?: string;
       coverUrl?: string;
       originalText?: string;
+      compressing?: boolean;
     } = {}
   ) {
+    logger.info("Creating audio...", { uri, params });
     let file = uri;
     let source;
     if (uri.startsWith("http")) {
@@ -90,6 +92,7 @@ class AudiosHandler {
         source,
         name: params.name,
         coverUrl: params.coverUrl,
+        compressing: params.compressing,
       });
 
       // create transcription if originalText is provided
@@ -107,7 +110,7 @@ class AudiosHandler {
 
       return audio.toJSON();
     } catch (err) {
-      logger.error(err);
+      logger.error(err.message);
       throw err;
     }
   }

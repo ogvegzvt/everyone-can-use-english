@@ -13,7 +13,9 @@ export * from "./learning-language-settings";
 export * from "./default-engine-settings";
 export * from "./openai-settings";
 export * from "./library-settings";
+export * from "./disk-usage";
 export * from "./stt-settings";
+export * from "./tts-settings";
 
 export * from "./user-settings";
 export * from "./email-settings";
@@ -27,10 +29,13 @@ export * from "./theme-settings";
 
 export * from "./proxy-settings";
 
-export * from "./whisper-model-options";
 export * from "./network-state";
 
 export * from "./recorder-settings";
 
 export * from "./vocabulary-settings";
 export * from "./dict-settings";
+
+export * from "./echogarden-stt-settings";
+
+export * from "./deposit";

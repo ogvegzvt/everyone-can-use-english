@@ -7,28 +7,30 @@ import {
   shell,
   dialog,
   systemPreferences,
+  MenuItemConstructorOptions,
+  autoUpdater,
 } from "electron";
 import path from "path";
 import db from "@main/db";
 import settings from "@main/settings";
 import downloader from "@main/downloader";
-import whisper from "@main/whisper";
 import fs from "fs-extra";
 import log from "@main/logger";
-import { REPO_URL, WS_URL } from "@/constants";
+import { DISCUSS_URL, REPO_URL, WEB_API_URL, WS_URL } from "@/constants";
 import { AudibleProvider, TedProvider, YoutubeProvider } from "@main/providers";
 import Ffmpeg from "@main/ffmpeg";
 import { Waveform } from "./waveform";
-import url from "url";
 import echogarden from "./echogarden";
 import camdict from "./camdict";
 import dict from "./dict";
 import mdict from "./mdict";
 import decompresser from "./decompresser";
 import { UserSetting } from "@main/db/models";
+import { t } from "i18next";
+import { format } from "util";
+import pkg from "../../package.json" with { type: "json" };
 
-const __filename = url.fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = import.meta.dirname;
 
 const logger = log.scope("window");
 
@@ -37,6 +39,25 @@ const tedProvider = new TedProvider();
 const youtubeProvider = new YoutubeProvider();
 const ffmpeg = new Ffmpeg();
 const waveform = new Waveform();
+
+const FEED_BASE_URL = `https://dl.enjoy.bot/app/${process.platform}/${process.arch}`;
+autoUpdater.setFeedURL({
+  url:
+    process.platform === "darwin"
+      ? `${FEED_BASE_URL}/RELEASES.json`
+      : FEED_BASE_URL,
+  headers: {
+    "X-App-Version": app.getVersion(),
+    "User-Agent": format(
+      "%s/%s (%s: %s)",
+      pkg.name,
+      pkg.version,
+      process.platform,
+      process.arch
+    ),
+  },
+  serverType: process.platform === "darwin" ? "json" : "default",
+});
 
 const main = {
   win: null as BrowserWindow | null,
@@ -61,9 +82,6 @@ main.init = async () => {
 
   // echogarden
   echogarden.registerIpcHandlers();
-
-  // Whisper
-  whisper.registerIpcHandlers();
 
   // Waveform
   waveform.registerIpcHandlers();
@@ -104,10 +122,21 @@ main.init = async () => {
       throw new Error("Invalid proxy config");
     }
 
-    if (config) {
-      if (!config.url) {
-        config.enabled = false;
-      }
+    if (config && !config.url) {
+      config.enabled = false;
+    }
+
+    return settings.setSync("proxy", config);
+  });
+
+  ipcMain.handle("system-proxy-refresh", (_event) => {
+    let config = settings.getSync("proxy") as ProxyConfigType;
+    if (!config) {
+      config = {
+        enabled: false,
+        url: "",
+      };
+      settings.setSync("proxy", config);
     }
 
     if (config.enabled && config.url) {
@@ -124,8 +153,6 @@ main.init = async () => {
       });
       mainWindow.webContents.session.closeAllConnections();
     }
-
-    return settings.setSync("proxy", config);
   });
 
   // BrowserView
@@ -211,6 +238,108 @@ main.init = async () => {
       view.webContents.loadURL(url);
     }
   );
+  
+  ipcMain.handle(
+    "view-load-community",
+    (
+      event,
+      bounds: { x: number; y: number; width: number; height: number },
+      options?: {
+        navigatable?: boolean;
+        accessToken?: string;
+        url?: string;
+        ssoUrl?: string;
+      }
+    ) => {
+      const {
+        x = 0,
+        y = 0,
+        width = mainWindow.getBounds().width,
+        height = mainWindow.getBounds().height,
+      } = bounds;
+      const { navigatable = false, accessToken, url = `${DISCUSS_URL}/login`, ssoUrl = `${WEB_API_URL}/discourse/sso` } = options || {};
+
+      logger.debug("view-load-community", url);
+      const view = new WebContentsView();
+      mainWindow.contentView.addChildView(view);
+
+      view.setBounds({
+        x: Math.round(x),
+        y: Math.round(y),
+        width: Math.round(width),
+        height: Math.round(height),
+      });
+
+      view.webContents.on("did-navigate", (_event, url) => {
+        event.sender.send("view-on-state", {
+          state: "did-navigate",
+          url,
+        });
+      });
+      view.webContents.on(
+        "did-fail-load",
+        (_event, _errorCode, errrorDescription, validatedURL) => {
+          event.sender.send("view-on-state", {
+            state: "did-fail-load",
+            error: errrorDescription,
+            url: validatedURL,
+          });
+          (view.webContents as any).destroy();
+          mainWindow.contentView.removeChildView(view);
+        }
+      );
+
+      view.webContents.on("will-redirect", (details) => {
+        const { url } = details;
+        event.sender.send("view-on-state", {
+          state: "will-redirect",
+          url,
+        });
+        // Login via SSO
+        if (url.includes(ssoUrl)) {
+          details.preventDefault();
+          // Auto login using access token
+          view.webContents.loadURL(url, {
+            extraHeaders: `Authorization: Bearer ${accessToken}\n`,
+          });
+          logger.debug("loading", url, "accessToken:", accessToken);
+        } else {
+          logger.debug("will-redirect", url);
+        }
+      });
+
+      view.webContents.on("will-navigate", (details) => {
+        const { url } = details;
+        event.sender.send("view-on-state", {
+          state: "will-navigate",
+          url,
+        });
+
+        logger.debug("will-navigate", url);
+
+        // Open in browser if not navigatable
+        if (!navigatable) {
+          logger.debug("prevent navigation", url);
+          details.preventDefault();
+          shell.openExternal(url);
+        }
+      });
+      view.webContents.loadURL(url);
+    }
+  );
+
+  ipcMain.handle("view-resize", (_event, bounds: { x: number; y: number; width: number; height: number }) => {
+    logger.debug("view-resize", bounds);
+    const view = mainWindow.contentView.children[0];
+    if (!view) return;
+
+    view.setBounds({
+      x: Math.round(bounds.x),
+      y: Math.round(bounds.y),
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+    });
+  });
 
   ipcMain.handle("view-remove", () => {
     logger.debug("view-remove");
@@ -231,7 +360,7 @@ main.init = async () => {
     "view-show",
     (
       _event,
-      bounds: {
+      bounds?: {
         x: number;
         y: number;
         width: number;
@@ -243,6 +372,9 @@ main.init = async () => {
 
       logger.debug("view-show", bounds);
       view.setVisible(true);
+      if (bounds) {
+        view.setBounds(bounds);
+      }
     }
   );
 
@@ -252,7 +384,32 @@ main.init = async () => {
     view.setVisible(false);
     mainWindow.contentView.addChildView(view);
 
+    // Add timeout handler
+    const timeout = setTimeout(() => {
+      logger.debug("view-scrape timeout", url);
+      event.sender.send("view-on-state", {
+        state: "did-fail-load",
+        error: "Request timed out",
+        url: url,
+      });
+      (view.webContents as any)?.destroy();
+      mainWindow.contentView.removeChildView(view);
+    }, 30000); // 30 second timeout
+
+    view.webContents.on("did-start-loading", () => {
+      logger.debug("view-scrape did-start-loading", url);
+    });
+
+    view.webContents.on("did-stop-loading", () => {
+      logger.debug("view-scrape did-stop-loading", url);
+    });
+
+    view.webContents.on("dom-ready", () => {
+      logger.debug("view-scrape dom-ready", url);
+    });
+
     view.webContents.on("did-navigate", (_event, url) => {
+      clearTimeout(timeout);
       event.sender.send("view-on-state", {
         state: "did-navigate",
         url,
@@ -261,6 +418,7 @@ main.init = async () => {
     view.webContents.on(
       "did-fail-load",
       (_event, _errorCode, errrorDescription, validatedURL) => {
+        clearTimeout(timeout);
         event.sender.send("view-on-state", {
           state: "did-fail-load",
           error: errrorDescription,
@@ -271,19 +429,31 @@ main.init = async () => {
       }
     );
     view.webContents.on("did-finish-load", () => {
+      clearTimeout(timeout);
+      logger.debug("view-scrape did-finish-load", url);
       view.webContents
         .executeJavaScript(`document.documentElement.innerHTML`)
         .then((html) => {
           event.sender.send("view-on-state", {
             state: "did-finish-load",
             html,
+            url,
           });
           (view.webContents as any).destroy();
           mainWindow.contentView.removeChildView(view);
         });
     });
 
-    view.webContents.loadURL(url);
+    view.webContents.loadURL(url).catch((err) => {
+      logger.error("view-scrape loadURL error", err);
+      (view.webContents as any).destroy();
+      mainWindow.contentView.removeChildView(view);
+      event.sender.send("view-on-state", {
+        state: "did-fail-load",
+        error: err.message,
+        url: url,
+      });
+    });
   });
 
   // App options
@@ -341,6 +511,44 @@ main.init = async () => {
 
   ipcMain.handle("app-quit", () => {
     app.quit();
+  });
+
+  ipcMain.handle("app-check-for-updates", () => {
+    autoUpdater.checkForUpdates();
+  });
+
+  ipcMain.handle("app-quit-and-install", () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  ipcMain.on("app-on-updater", () => {
+    autoUpdater.on("error", (error) => {
+      mainWindow.webContents.send("app-on-updater", "error", [error]);
+    });
+    autoUpdater.on("checking-for-update", () => {
+      mainWindow.webContents.send("app-on-updater", "checking-for-update", []);
+    });
+    autoUpdater.on("update-available", () => {
+      mainWindow.webContents.send("app-on-updater", "update-available", []);
+    });
+    autoUpdater.on(
+      "update-downloaded",
+      (_event, releaseNotes, releaseName, releaseDate, updateURL) => {
+        logger.info(
+          "update-downloaded",
+          releaseNotes,
+          releaseName,
+          releaseDate,
+          updateURL
+        );
+        mainWindow.webContents.send("app-on-updater", "update-downloaded", [
+          releaseNotes,
+          releaseName,
+          releaseDate,
+          updateURL,
+        ]);
+      }
+    );
   });
 
   ipcMain.handle("app-open-dev-tools", () => {
@@ -402,20 +610,23 @@ ${log}
       segments: path.join(settings.userDataPath(), "segments"),
       speeches: path.join(settings.userDataPath(), "speeches"),
       recordings: path.join(settings.userDataPath(), "recordings"),
-      whisper: path.join(settings.libraryPath(), "whisper"),
       waveforms: path.join(settings.libraryPath(), "waveforms"),
       logs: path.join(settings.libraryPath(), "logs"),
       cache: settings.cachePath(),
     };
 
     const sizeSync = (p: string): number => {
-      const stat = fs.statSync(p);
-      if (stat.isFile()) return stat.size;
-      else if (stat.isDirectory())
-        return fs
-          .readdirSync(p)
-          .reduce((a, e) => a + sizeSync(path.join(p, e)), 0);
-      else return 0; // can't take size of a stream/symlink/socket/
+      try {
+        const stat = fs.statSync(p);
+        if (stat.isFile()) return stat.size;
+        else if (stat.isDirectory())
+          return fs
+            .readdirSync(p)
+            .reduce((a, e) => a + sizeSync(path.join(p, e)), 0);
+        else return 0; // can't take size of a stream/symlink/socket/
+      } catch (error) {
+        return 0; // Return 0 if path doesn't exist or there's any other error
+      }
     };
 
     return Object.keys(paths).map((key) => {
@@ -467,7 +678,9 @@ ${log}
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    icon: "./assets/icon.png",
+    show: false,
+    icon:
+      process.platform === "win32" ? "./assets/icon.ico" : "./assets/icon.png",
     width: 1280,
     height: 720,
     minWidth: 800,
@@ -476,10 +689,81 @@ ${log}
       preload: path.join(__dirname, "preload.js"),
       spellcheck: false,
     },
+    frame: false,
+    titleBarStyle: "hidden",
+    titleBarOverlay: process.platform === "darwin",
+    trafficLightPosition: {
+      x: 10,
+      y: 8,
+    },
+    useContentSize: true,
+  });
+
+  mainWindow.on("ready-to-show", () => {
+    mainWindow.show();
   });
 
   mainWindow.on("resize", () => {
-    mainWindow.webContents.send("window-on-resize", mainWindow.getBounds());
+    mainWindow.webContents.send("window-on-change", {
+      event: "resize",
+      state: mainWindow.getBounds(),
+    });
+  });
+
+  mainWindow.on("enter-full-screen", () => {
+    mainWindow.webContents.send("window-on-change", {
+      event: "enter-full-screen",
+    });
+  });
+
+  mainWindow.on("leave-full-screen", () => {
+    mainWindow.webContents.send("window-on-change", {
+      event: "leave-full-screen",
+    });
+  });
+
+  mainWindow.on("maximize", () => {
+    mainWindow.webContents.send("window-on-change", { event: "maximize" });
+  });
+
+  mainWindow.on("unmaximize", () => {
+    mainWindow.webContents.send("window-on-change", { event: "unmaximize" });
+  });
+
+  ipcMain.handle("window-is-maximized", () => {
+    return mainWindow.isMaximized();
+  });
+
+  ipcMain.handle("window-toggle-maximized", () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.handle("window-maximize", () => {
+    mainWindow.maximize();
+  });
+
+  ipcMain.handle("window-unmaximize", () => {
+    mainWindow.unmaximize();
+  });
+
+  ipcMain.handle("window-fullscreen", () => {
+    mainWindow.setFullScreen(true);
+  });
+
+  ipcMain.handle("window-unfullscreen", () => {
+    mainWindow.setFullScreen(false);
+  });
+
+  ipcMain.handle("window-minimize", () => {
+    mainWindow.minimize();
+  });
+
+  ipcMain.handle("window-close", () => {
+    app.quit();
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => {
@@ -523,7 +807,51 @@ ${log}
     // mainWindow.webContents.openDevTools();
   }
 
-  Menu.setApplicationMenu(null);
+  const menuTemplate: MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        { role: "hide" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        {
+          label: "Check for Updates",
+          click: () => {
+            shell.openExternal("https://1000h.org/enjoy-app/install.html");
+          },
+        },
+        {
+          label: "Report an Issue",
+          click: () => {
+            shell.openExternal(`${REPO_URL}/issues/new`);
+          },
+        },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
   main.win = mainWindow;
 };

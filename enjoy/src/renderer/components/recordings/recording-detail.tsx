@@ -14,8 +14,9 @@ export const RecordingDetail = (props: {
   recording: RecordingType;
   pronunciationAssessment?: PronunciationAssessmentType;
   onAssess?: (assessment: PronunciationAssessmentType) => void;
+  onPlayOrigin?: (word: string, index: number) => void;
 }) => {
-  const { recording, onAssess } = props;
+  const { recording, onAssess, onPlayOrigin } = props;
   if (!recording) return;
 
   const [pronunciationAssessment, setPronunciationAssessment] =
@@ -40,7 +41,7 @@ export const RecordingDetail = (props: {
     setAssessing(true);
     createAssessment({
       recording,
-      reference: recording.referenceText || "",
+      reference: recording.referenceText?.replace(/[—]/g, ", ") || "",
       language: recording.language || learningLanguage,
     })
       .then((assessment) => {
@@ -61,7 +62,7 @@ export const RecordingDetail = (props: {
 
   return (
     <div className="">
-      <div className="flex justify-center mb-6 px-4">
+      <div className="flex justify-center mb-6">
         <WavesurferPlayer
           id={recording.id}
           src={recording.src}
@@ -73,9 +74,11 @@ export const RecordingDetail = (props: {
 
       {result ? (
         <PronunciationAssessmentFulltextResult
+          className="py-4"
           words={result.words}
           currentTime={currentTime}
           src={recording.src}
+          onPlayOrigin={onPlayOrigin}
         />
       ) : (
         <ScrollArea className="min-h-72 py-4 px-8 select-text">

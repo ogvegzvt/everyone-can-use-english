@@ -122,7 +122,7 @@ export const MediaWaveform = () => {
         if (!savePath) return;
 
         toast.promise(EnjoyApp.download.start(media.src, savePath as string), {
-          loading: t("downloading", { file: media.filename }),
+          loading: t("downloadingFile", { file: media.filename }),
           success: () => t("downloadedSuccessfully"),
           error: t("downloadFailed"),
           position: "bottom-right",
@@ -139,16 +139,19 @@ export const MediaWaveform = () => {
     setWaveformContainerRef(ref);
 
     if (!wavesurfer) return;
+
+    let rafId: number;
     const observer = new ResizeObserver(() => {
-      debouncedCalContainerSize();
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        debouncedCalContainerSize();
+      });
     });
     observer.observe(ref.current);
 
-    EnjoyApp.window.onResize(debouncedCalContainerSize);
-
     return () => {
-      EnjoyApp.window.removeListeners();
       observer.disconnect();
+      cancelAnimationFrame(rafId);
     };
   }, [ref, wavesurfer]);
 
@@ -269,6 +272,7 @@ export const MediaWaveform = () => {
             variant={`${action.active ? "secondary" : "ghost"}`}
             data-tooltip-id="media-shadow-tooltip"
             data-tooltip-content={action.label}
+            data-tooltip-place="left"
             className="relative p-0 w-full h-full rounded-none"
             onClick={action.onClick}
           >
@@ -284,6 +288,7 @@ export const MediaWaveform = () => {
                 size="icon"
                 data-tooltip-id="media-shadow-tooltip"
                 data-tooltip-content={t("more")}
+                data-tooltip-place="left"
                 className="relative p-0 w-full h-full rounded-none"
               >
                 <MoreHorizontalIcon className="w-4 h-4" />

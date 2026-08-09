@@ -1,12 +1,6 @@
 import { t } from "i18next";
 import {
   Button,
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogDescription,
-  DialogFooter,
   toast,
   Select,
   SelectTrigger,
@@ -14,53 +8,56 @@ import {
   SelectItem,
   SelectValue,
 } from "@renderer/components/ui";
-import { WhisperModelOptions } from "@renderer/components";
 import {
   AppSettingsProviderContext,
   AISettingsProviderContext,
 } from "@renderer/context";
 import { useContext, useEffect, useState } from "react";
-import { InfoIcon, AlertCircleIcon } from "lucide-react";
 import { SttEngineOptionEnum } from "@/types/enums";
+import { EchogardenSttSettings } from "@renderer/components";
 
-export const WhisperSettings = () => {
-  const { sttEngine, whisperConfig, refreshWhisperConfig, setSttEngine } =
-    useContext(AISettingsProviderContext);
+export const SttSettings = () => {
+  const {
+    sttEngine,
+    setSttEngine,
+    echogardenSttConfig,
+    setEchogardenSttConfig,
+  } = useContext(AISettingsProviderContext);
   const { EnjoyApp } = useContext(AppSettingsProviderContext);
-  const [stderr, setStderr] = useState("");
 
-  useEffect(() => {
-    refreshWhisperConfig();
-  }, []);
+  const [editing, setEditing] = useState(false);
 
   const handleCheck = async () => {
     toast.promise(
       async () => {
-        const { success, log } = await EnjoyApp.whisper.check();
+        const { success, log } = await EnjoyApp.echogarden.check(
+          echogardenSttConfig
+        );
         if (success) {
-          setStderr("");
           return Promise.resolve();
         } else {
-          setStderr(log);
-          return Promise.reject();
+          return Promise.reject(log);
         }
       },
       {
         loading: t("checkingWhisper"),
         success: t("whisperIsWorkingGood"),
-        error: t("whisperIsNotWorking"),
+        error: (error) => t("whisperIsNotWorking") + ": " + error,
       }
     );
   };
+
+  useEffect(() => {
+    if (sttEngine !== SttEngineOptionEnum.LOCAL) {
+      setEditing(false);
+    }
+  }, [sttEngine]);
 
   return (
     <div className="flex items-start justify-between py-4">
       <div className="">
         <div className="flex items-center mb-2">
           <span>{t("sttAiService")}</span>
-          {stderr && (
-            <AlertCircleIcon className="ml-2 w-4 h-4 text-yellow-500" />
-          )}
         </div>
         <div className="text-sm text-muted-foreground">
           {sttEngine === SttEngineOptionEnum.LOCAL &&
@@ -71,6 +68,27 @@ export const WhisperSettings = () => {
             t("enjoyCloudflareSpeechToTextDescription")}
           {sttEngine === SttEngineOptionEnum.OPENAI &&
             t("openaiSpeechToTextDescription")}
+        </div>
+        <div
+          className={`text-sm text-muted-foreground mt-4 px-1 ${
+            editing ? "" : "hidden"
+          }`}
+        >
+          <EchogardenSttSettings
+            echogardenSttConfig={echogardenSttConfig}
+            onSave={(data) => {
+              setEchogardenSttConfig(data as EchogardenSttConfigType)
+                .then(() => {
+                  toast.success(t("saved"));
+                })
+                .catch((error) => {
+                  toast.error(error.message);
+                })
+                .finally(() => {
+                  setEditing(false);
+                });
+            }}
+          />
         </div>
       </div>
 
@@ -98,46 +116,20 @@ export const WhisperSettings = () => {
           </SelectContent>
         </Select>
 
-        {sttEngine === "local" && (
+        {sttEngine === SttEngineOptionEnum.LOCAL && (
           <>
-            <Button onClick={handleCheck} variant="secondary" size="sm">
-              {t("check")}
+            <Button
+              onClick={() => setEditing(!editing)}
+              variant="secondary"
+              size="sm"
+            >
+              {editing ? t("cancel") : t("config")}
             </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="secondary" size="sm">
-                  {t("model")}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>{t("sttAiService")}</DialogHeader>
-                <DialogDescription>
-                  {t("chooseAIModelDependingOnYourHardware")}
-                </DialogDescription>
-
-                <WhisperModelOptions />
-
-                <DialogFooter>
-                  <div className="text-xs flex items-start space-x-2">
-                    <InfoIcon className="mr-1.5 w-4 h-4" />
-                    <span className="flex-1 opacity-70">
-                      {t("yourModelsWillBeDownloadedTo", {
-                        path: whisperConfig.modelsPath,
-                      })}
-                    </span>
-                    <Button
-                      onClick={() => {
-                        EnjoyApp.shell.openPath(whisperConfig?.modelsPath);
-                      }}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {t("open")}
-                    </Button>
-                  </div>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            {!editing && (
+              <Button onClick={handleCheck} variant="secondary" size="sm">
+                {t("check")}
+              </Button>
+            )}
           </>
         )}
       </div>

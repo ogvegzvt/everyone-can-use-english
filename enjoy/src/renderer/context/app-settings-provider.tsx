@@ -4,10 +4,31 @@ import { Client } from "@/api";
 import i18n from "@renderer/i18n";
 import ahoy from "ahoy.js";
 import { type Consumer, createConsumer } from "@rails/actioncable";
-import * as Sentry from "@sentry/electron/renderer";
-import { SENTRY_DSN } from "@/constants";
 import { DbProviderContext } from "@renderer/context";
 import { UserSettingKeyEnum } from "@/types/enums";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+  Button,
+} from "@renderer/components/ui";
+import { t } from "i18next";
+import { redirect } from "react-router-dom";
+import { Deposit } from "@renderer/components";
+import Bugsnag from "@bugsnag/electron";
+import BugsnagPluginReact from "@bugsnag/plugin-react";
 
 type AppSettingsProviderState = {
   webApi: Client;
@@ -20,8 +41,9 @@ type AppSettingsProviderState = {
   libraryPath?: string;
   login?: (user: UserType) => void;
   logout?: () => void;
+  refreshAccount?: () => Promise<void>;
   setLibraryPath?: (path: string) => Promise<void>;
-  EnjoyApp?: EnjoyAppType;
+  EnjoyApp: EnjoyAppType;
   language?: "en" | "zh-CN";
   switchLanguage?: (language: "en" | "zh-CN") => void;
   nativeLanguage?: string;
@@ -38,12 +60,19 @@ type AppSettingsProviderState = {
   setRecorderConfig?: (config: RecorderConfigType) => Promise<void>;
   // remote config
   ipaMappings?: { [key: string]: string };
+  displayPreferences?: boolean;
+  setDisplayPreferences?: (display: boolean) => void;
+  displayDepositDialog?: boolean;
+  setDisplayDepositDialog?: (display: boolean) => void;
 };
+
+const EnjoyApp = window.__ENJOY_APP__;
 
 const initialState: AppSettingsProviderState = {
   webApi: null,
   user: null,
   initialized: false,
+  EnjoyApp: EnjoyApp,
 };
 
 export const AppSettingsProviderContext =
@@ -67,22 +96,16 @@ export const AppSettingsProvider = ({
   const [vocabularyConfig, setVocabularyConfig] =
     useState<VocabularyConfigType>(null);
   const [proxy, setProxy] = useState<ProxyConfigType>();
-  const EnjoyApp = window.__ENJOY_APP__;
   const [recorderConfig, setRecorderConfig] = useState<RecorderConfigType>();
   const [ipaMappings, setIpaMappings] = useState<{ [key: string]: string }>(
     IPA_MAPPINGS
   );
-  const db = useContext(DbProviderContext);
+  const [loggingOut, setLoggingOut] = useState<boolean>(false);
+  const [displayDepositDialog, setDisplayDepositDialog] =
+    useState<boolean>(false);
+  const [displayPreferences, setDisplayPreferences] = useState<boolean>(false);
 
-  const initSentry = () => {
-    EnjoyApp.app.isPackaged().then((isPackaged) => {
-      if (isPackaged) {
-        Sentry.init({
-          dsn: SENTRY_DSN,
-        });
-      }
-    });
-  };
+  const db = useContext(DbProviderContext);
 
   const fetchLanguages = async () => {
     const language = await EnjoyApp.userSettings.get(
@@ -172,11 +195,13 @@ export const AppSettingsProvider = ({
   const fetchProxyConfig = async () => {
     const config = await EnjoyApp.system.proxy.get();
     setProxy(config);
+    EnjoyApp.system.proxy.refresh();
   };
 
   const setProxyConfigHandler = async (config: ProxyConfigType) => {
     EnjoyApp.system.proxy.set(config).then(() => {
       setProxy(config);
+      EnjoyApp.system.proxy.refresh();
     });
   };
 
@@ -235,13 +260,21 @@ export const AppSettingsProvider = ({
     setVocabularyConfig(config);
   };
 
-  useEffect(() => {
-    if (db.state !== "connected") return;
+  const refreshAccount = async () => {
+    webApi.me().then((u) => {
+      setUser({
+        ...user,
+        ...u,
+      });
+    });
+  };
 
-    fetchLanguages();
-    fetchVocabularyConfig();
-    initSentry();
-    fetchRecorderConfig();
+  useEffect(() => {
+    if (db.state === "connected") {
+      fetchLanguages();
+      fetchVocabularyConfig();
+      fetchRecorderConfig();
+    }
   }, [db.state]);
 
   useEffect(() => {
@@ -267,7 +300,7 @@ export const AppSettingsProvider = ({
         },
       })
     );
-  }, [user, apiUrl, language]);
+  }, [user?.accessToken, apiUrl, language]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -279,6 +312,7 @@ export const AppSettingsProvider = ({
 
   useEffect(() => {
     if (!webApi) return;
+    if (ipaMappings && latestVersion) return;
 
     webApi.config("ipa_mappings").then((mappings) => {
       if (mappings) setIpaMappings(mappings);
@@ -308,6 +342,7 @@ export const AppSettingsProvider = ({
     });
     return () => {
       db.disconnect();
+      setUser(null);
     };
   }, [user?.id]);
 
@@ -328,22 +363,70 @@ export const AppSettingsProvider = ({
         setApiUrl: setApiUrlHandler,
         user,
         login,
-        logout,
+        logout: () => setLoggingOut(true),
+        refreshAccount,
         libraryPath,
         setLibraryPath: setLibraryPathHandler,
         proxy,
         setProxy: setProxyConfigHandler,
         vocabularyConfig,
         setVocabularyConfig: setVocabularyConfigHandler,
-        initialized: Boolean(user && libraryPath),
+        initialized: Boolean(user && db.state === "connected" && libraryPath),
         ahoy,
         cable,
         recorderConfig,
         setRecorderConfig: setRecorderConfigHandler,
         ipaMappings,
+        displayPreferences,
+        setDisplayPreferences,
+        displayDepositDialog,
+        setDisplayDepositDialog,
       }}
     >
       {children}
+
+      <AlertDialog open={loggingOut} onOpenChange={setLoggingOut}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("logout")}</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogDescription>
+            {t("logoutConfirmation")}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive-hover"
+              onClick={() => {
+                logout();
+                redirect("/landing");
+              }}
+            >
+              {t("logout")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog
+        open={displayDepositDialog}
+        onOpenChange={setDisplayDepositDialog}
+      >
+        <DialogContent className="max-h-full overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("deposit")}</DialogTitle>
+            <DialogDescription>{t("depositDescription")}</DialogDescription>
+          </DialogHeader>
+
+          {displayDepositDialog && <Deposit />}
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="secondary">{t("close")}</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppSettingsProviderContext.Provider>
   );
 };

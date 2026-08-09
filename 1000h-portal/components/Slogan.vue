@@ -39,7 +39,7 @@
         </button>
       </a>
 
-      <a href="https://1000h.org/enjoy-app/install.html" target="_blank">
+      <a href="https://enjoy.bot" target="_blank">
         <button
           class="action secondary px-4 py-3 md:px-5 md:py-4 text-[14px] md:text-[16px] sm:ml-4 max-sm:w-[260px]"
         >

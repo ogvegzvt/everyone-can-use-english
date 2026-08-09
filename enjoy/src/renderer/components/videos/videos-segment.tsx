@@ -62,11 +62,11 @@ export const VideosSegment = (props: { limit?: number }) => {
 
       {videos.length === 0 ? (
         <div className="flex items-center justify-center h-48 border border-dashed rounded-lg">
-          <MediaAddButton />
+          <MediaAddButton type="Video" />
         </div>
       ) : (
         <ScrollArea>
-          <div className="flex items-center space-x-4 pb-4">
+          <div className="flex w-max items-center space-x-4 pb-4">
             {videos.map((video) => {
               return (
                 <VideoCard className="w-56" key={video.id} video={video} />

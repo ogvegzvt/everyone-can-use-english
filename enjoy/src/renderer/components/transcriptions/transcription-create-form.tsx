@@ -60,7 +60,9 @@ export const TranscriptionCreateForm = (props: {
     originalText,
   } = props;
   const { learningLanguage } = useContext(AppSettingsProviderContext);
-  const { sttEngine } = useContext(AISettingsProviderContext);
+  const { sttEngine, echogardenSttConfig } = useContext(
+    AISettingsProviderContext
+  );
 
   const form = useForm<z.infer<typeof transcriptionSchema>>({
     resolver: zodResolver(transcriptionSchema),
@@ -183,7 +185,23 @@ export const TranscriptionCreateForm = (props: {
               </Select>
               <FormDescription>
                 {form.watch("service") === SttEngineOptionEnum.LOCAL &&
-                  t("localSpeechToTextDescription")}
+                  echogardenSttConfig && (
+                    <>
+                      <div>{t("localSpeechToTextDescription")}</div>
+                      <div>
+                        * {t("model")}: {echogardenSttConfig.engine} /{" "}
+                        {
+                          echogardenSttConfig[
+                            echogardenSttConfig.engine?.replace(
+                              ".cpp",
+                              "Cpp"
+                            ) as "whisper" | "whisperCpp"
+                          ]?.model
+                        }
+                      </div>
+                    </>
+                  )}
+
                 {form.watch("service") === SttEngineOptionEnum.ENJOY_AZURE &&
                   t("enjoyAzureSpeechToTextDescription")}
                 {form.watch("service") ===
@@ -197,6 +215,7 @@ export const TranscriptionCreateForm = (props: {
             </FormItem>
           )}
         />
+
         <FormField
           control={form.control}
           name="language"

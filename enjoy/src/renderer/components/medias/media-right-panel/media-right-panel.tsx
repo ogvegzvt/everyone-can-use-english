@@ -1,10 +1,8 @@
-import { useEffect, useState, useContext, useRef } from "react";
-import {
-  AppSettingsProviderContext,
-  MediaShadowProviderContext,
-} from "@renderer/context";
+import { useEffect, useState, useContext, useRef, useMemo } from "react";
+import { MediaShadowProviderContext } from "@renderer/context";
 import cloneDeep from "lodash/cloneDeep";
 import {
+  Button,
   ScrollArea,
   Tabs,
   TabsList,
@@ -14,26 +12,31 @@ import {
 import { MediaCaption, MediaCaptionActions } from "@renderer/components";
 import { t } from "i18next";
 import {
-  Timeline,
-  TimelineEntry,
-} from "echogarden/dist/utilities/Timeline.d.js";
-import {
   MediaCaptionAnalysis,
   MediaCaptionNote,
   MediaCaptionTranslation,
 } from "@renderer/components";
+import { cn } from "@renderer/lib/utils";
+import { ArrowLeftRightIcon } from "lucide-react";
 
-export const MediaRightPanel = () => {
+export const MediaRightPanel = (props: {
+  className?: string;
+  setDisplayPanel?: (displayPanel: "left" | "right" | null) => void;
+}) => {
+  const { className, setDisplayPanel } = props;
   const {
+    caption,
     currentSegmentIndex,
     currentTime,
     transcription,
     regions,
     activeRegion,
     setActiveRegion,
+    toggleRegion,
     editingRegion,
     setEditingRegion,
     setTranscriptionDraft,
+    layout,
   } = useContext(MediaShadowProviderContext);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -42,7 +45,6 @@ export const MediaRightPanel = () => {
   const [displayIpa, setDisplayIpa] = useState<boolean>(true);
   const [displayNotes, setDisplayNotes] = useState<boolean>(true);
 
-  const [caption, setCaption] = useState<TimelineEntry | null>(null);
   const [tab, setTab] = useState<string>("translation");
 
   const toggleMultiSelect = (event: KeyboardEvent) => {
@@ -74,67 +76,6 @@ export const MediaRightPanel = () => {
     }
   };
 
-  const toggleRegion = (params: number[]) => {
-    if (!activeRegion) return;
-    if (editingRegion) {
-      toast.warning(t("currentRegionIsBeingEdited"));
-      return;
-    }
-    if (params.length === 0) {
-      if (activeRegion.id.startsWith("word-region")) {
-        activeRegion.remove();
-        setActiveRegion(
-          regions.getRegions().find((r) => r.id.startsWith("segment-region"))
-        );
-      }
-      return;
-    }
-
-    const startIndex = Math.min(...params);
-    const endIndex = Math.max(...params);
-
-    const startWord = caption.timeline[startIndex];
-    if (!startWord) return;
-
-    const endWord = caption.timeline[endIndex] || startWord;
-
-    const start = startWord.startTime;
-    const end = endWord.endTime;
-
-    // If the active region is a word region, then merge the selected words into a single region.
-    if (activeRegion.id.startsWith("word-region")) {
-      activeRegion.remove();
-
-      const region = regions.addRegion({
-        id: `word-region-${startIndex}`,
-        start,
-        end,
-        color: "#fb6f9233",
-        drag: false,
-        resize: editingRegion,
-      });
-
-      setActiveRegion(region);
-      // If the active region is a meaning group region, then active the segment region.
-    } else if (activeRegion.id.startsWith("meaning-group-region")) {
-      setActiveRegion(
-        regions.getRegions().find((r) => r.id.startsWith("segment-region"))
-      );
-      // If the active region is a segment region, then create a new word region.
-    } else {
-      const region = regions.addRegion({
-        id: `word-region-${startIndex}`,
-        start,
-        end,
-        color: "#fb6f9233",
-        drag: false,
-        resize: false,
-      });
-
-      setActiveRegion(region);
-    }
-  };
-
   useEffect(() => {
     if (!caption) return;
 
@@ -155,6 +96,7 @@ export const MediaRightPanel = () => {
     toggleRegion(selectedIndices);
   }, [caption, selectedIndices]);
 
+  // Edit region to update transcription draft
   useEffect(() => {
     if (!activeRegion) return;
     if (!activeRegion.id.startsWith("word-region")) return;
@@ -230,12 +172,6 @@ export const MediaRightPanel = () => {
   }, [editingRegion]);
 
   useEffect(() => {
-    setCaption(
-      (transcription?.result?.timeline as Timeline)?.[currentSegmentIndex]
-    );
-  }, [currentSegmentIndex, transcription]);
-
-  useEffect(() => {
     return () => setSelectedIndices([]);
   }, [caption]);
 
@@ -257,33 +193,45 @@ export const MediaRightPanel = () => {
   if (!caption) return null;
 
   return (
-    <div className="h-full relative">
+    <div className={cn("h-full relative", className)}>
       <div className="flex-1 font-serif h-full">
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value)}
           className="h-full flex flex-col"
         >
-          <TabsList className="grid grid-cols-3 gap-4 rounded-none w-full px-4">
-            <TabsTrigger
-              value="translation"
-              className="capitalize block truncate px-1"
-            >
-              {t("captionTabs.translation")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="note"
-              className="capitalize block truncate px-1"
-            >
-              {t("captionTabs.note")}
-            </TabsTrigger>
-            <TabsTrigger
-              value="analysis"
-              className="capitalize block truncate px-1"
-            >
-              {t("captionTabs.analysis")}
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center bg-muted px-4">
+            {layout === "compact" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="mr-2"
+                onClick={() => setDisplayPanel?.("left")}
+              >
+                <ArrowLeftRightIcon className="w-4 h-4" />
+              </Button>
+            )}
+            <TabsList className="grid grid-cols-3 gap-4 rounded-none w-full">
+              <TabsTrigger
+                value="translation"
+                className="capitalize block truncate px-1"
+              >
+                {t("captionTabs.translation")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="note"
+                className="capitalize block truncate px-1"
+              >
+                {t("captionTabs.note")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="analysis"
+                className="capitalize block truncate px-1"
+              >
+                {t("captionTabs.analysis")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
           <ScrollArea className="flex-1 relative">
             <MediaCaption
               caption={caption}

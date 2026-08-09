@@ -16,10 +16,7 @@ import { enjoyUrlToPath, pathToEnjoyUrl } from "@main/utils";
  */
 Ffmpeg.setFfmpegPath(ffmpegPath.replace("app.asar", "app.asar.unpacked"));
 Ffmpeg.setFfprobePath(ffprobePath.replace("app.asar", "app.asar.unpacked"));
-const __filename = url.fileURLToPath(import.meta.url);
-const __dirname = path
-  .dirname(__filename)
-  .replace("app.asar", "app.asar.unpacked");
+const __dirname = import.meta.dirname.replace("app.asar", "app.asar.unpacked");
 
 const logger = log.scope("ffmpeg");
 export default class FfmpegWrapper {
@@ -287,6 +284,74 @@ export default class FfmpegWrapper {
           reject(err);
         })
         .mergeToFile(output, settings.cachePath());
+    });
+  }
+
+  compressVideo(input: string, output: string) {
+    const ffmpeg = Ffmpeg();
+    return new Promise((resolve, reject) => {
+      ffmpeg
+        .input(input)
+        .outputOptions(
+          "-c:v",
+          "libx264",
+          "-tag:v",
+          "avc1",
+          "-movflags",
+          "faststart",
+          "-crf",
+          "30",
+          "-preset",
+          "superfast",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k"
+        )
+        .on("start", (commandLine) => {
+          logger.info("Spawned FFmpeg with command: " + commandLine);
+          fs.ensureDirSync(path.dirname(output));
+        })
+        .on("end", () => {
+          logger.info(`File "${output}" created`);
+          resolve(output);
+        })
+        .on("error", (err) => {
+          logger.error(err);
+          reject(err);
+        })
+        .save(output);
+    });
+  }
+
+  compressAudio(input: string, output: string) {
+    const ffmpeg = Ffmpeg();
+    return new Promise((resolve, reject) => {
+      ffmpeg
+        .input(input)
+        .outputOptions(
+          "-ar",
+          "16000",
+          "-b:a",
+          "32000",
+          "-ac",
+          "1",
+          "-preset",
+          "superfast"
+        )
+        .on("start", (commandLine) => {
+          logger.info("Spawned FFmpeg with command: " + commandLine);
+          fs.ensureDirSync(path.dirname(output));
+        })
+        .on("end", () => {
+          logger.info(`File "${output}" created`);
+          resolve(output);
+        })
+        .on("error", (err) => {
+          logger.error(err.message);
+          reject(err);
+        })
+        .save(output);
     });
   }
 

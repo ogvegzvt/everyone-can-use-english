@@ -1,14 +1,5 @@
 import { t } from "i18next";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
   Avatar,
   AvatarImage,
   AvatarFallback,
@@ -30,7 +21,7 @@ export const UserSettings = () => {
   const { user, login, logout, webApi } = useContext(
     AppSettingsProviderContext
   );
-  const [name, setName] = useState(user.name);
+  const [name, setName] = useState(user?.name);
   const [editing, setEditing] = useState(false);
 
   const refreshProfile = () => {
@@ -103,38 +94,14 @@ export const UserSettings = () => {
             </DialogContent>
           </Dialog>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="secondary"
-                className="text-destructive"
-                size="sm"
-              >
-                {t("logout")}
-              </Button>
-            </AlertDialogTrigger>
-
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t("logout")}</AlertDialogTitle>
-              </AlertDialogHeader>
-              <AlertDialogDescription>
-                {t("logoutConfirmation")}
-              </AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-                <AlertDialogAction
-                  className="bg-destructive hover:bg-destructive-hover"
-                  onClick={() => {
-                    logout();
-                    redirect("/landing");
-                  }}
-                >
-                  {t("logout")}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="secondary"
+            className="text-destructive"
+            size="sm"
+            onClick={logout}
+          >
+            {t("logout")}
+          </Button>
         </div>
       </div>
     </>

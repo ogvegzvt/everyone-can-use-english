@@ -13,6 +13,7 @@ import {
   DataType,
   Unique,
   HasOne,
+  Scopes,
 } from "sequelize-typescript";
 import mainWindow from "@main/window";
 import {
@@ -30,8 +31,10 @@ import storage from "@main/storage";
 import { Client } from "@/api";
 import echogarden from "@main/echogarden";
 import { t } from "i18next";
-import { Attributes, Transaction } from "sequelize";
+import { Attributes, Op, Transaction } from "sequelize";
 import { v5 as uuidv5 } from "uuid";
+import FfmpegWrapper from "@main/ffmpeg";
+import { MIME_TYPES } from "@/constants";
 
 const logger = log.scope("db/models/recording");
 
@@ -41,6 +44,20 @@ const logger = log.scope("db/models/recording");
   underscored: true,
   timestamps: true,
 })
+@Scopes(() => ({
+  withoutDeleted: {
+    where: {
+      deletedAt: null,
+    },
+  },
+  onlyDeleted: {
+    where: {
+      deletedAt: {
+        [Op.not]: null,
+      },
+    },
+  },
+}))
 export class Recording extends Model<Recording> {
   @IsUUID("all")
   @Default(DataType.UUIDV4)
@@ -96,6 +113,9 @@ export class Recording extends Model<Recording> {
   @Column(DataType.DATE)
   uploadedAt: Date;
 
+  @Column(DataType.DATE)
+  deletedAt: Date;
+
   @Column(DataType.VIRTUAL)
   get isSynced(): boolean {
     return Boolean(this.syncedAt) && this.syncedAt >= this.updatedAt;
@@ -107,7 +127,14 @@ export class Recording extends Model<Recording> {
   }
 
   @Column(DataType.VIRTUAL)
+  get isDeleted(): boolean {
+    return Boolean(this.deletedAt);
+  }
+
+  @Column(DataType.VIRTUAL)
   get src(): string {
+    if (!this.filePath) return;
+
     return `enjoy://${path.posix.join(
       "library",
       "recordings",
@@ -115,12 +142,35 @@ export class Recording extends Model<Recording> {
     )}`;
   }
 
+  @Column(DataType.VIRTUAL)
+  get mimeType(): string {
+    return MIME_TYPES[this.extname.toLowerCase()] || "audio/mpeg";
+  }
+
+  get extname(): string {
+    return path.extname(this.filePath);
+  }
+
   get filePath(): string {
-    return path.join(
+    const file = path.join(
       settings.userDataPath(),
       "recordings",
       this.getDataValue("filename")
     );
+    if (fs.existsSync(file)) {
+      return file;
+    }
+
+    return null;
+  }
+
+  async softDelete() {
+    await this.update({
+      deletedAt: new Date(),
+    });
+    if (this.filePath) {
+      fs.remove(this.filePath);
+    }
   }
 
   async upload(force: boolean = false) {
@@ -129,11 +179,11 @@ export class Recording extends Model<Recording> {
     }
 
     return storage
-      .put(this.md5, this.filePath)
+      .put(this.md5, this.filePath, this.mimeType)
       .then((result) => {
         logger.debug("upload result:", result.data);
         if (result.data.success) {
-          this.update({ uploadedAt: new Date() });
+          this.update({ uploadedAt: new Date() }, { hooks: false });
         } else {
           throw new Error(result.data);
         }
@@ -154,7 +204,7 @@ export class Recording extends Model<Recording> {
     });
 
     return webApi.syncRecording(this.toJSON()).then(() => {
-      this.update({ syncedAt: new Date() });
+      this.update({ syncedAt: new Date() }, { hooks: false });
     });
   }
 
@@ -299,14 +349,10 @@ export class Recording extends Model<Recording> {
     }
 
     // rename file
-    const filename = `${md5}.wav`;
-    fs.moveSync(
-      file,
-      path.join(settings.userDataPath(), "recordings", filename),
-      {
-        overwrite: true,
-      }
-    );
+    const filename = `${md5}.mp3`;
+    const destFile = path.join(settings.userDataPath(), "recordings", filename);
+    const ffmpeg = new FfmpegWrapper();
+    await ffmpeg.compressAudio(file, destFile);
 
     const userId = settings.getSync("user.id");
     const id = uuidv5(`${userId}/${md5}`, uuidv5.URL);

@@ -42,8 +42,8 @@ export default () => {
 
   return (
     <CourseProvider id={id}>
-      <div className="flex flex-col h-screen px-4 xl:px-6 py-6">
-        <Breadcrumb className="mb-6">
+      <div className="flex flex-col h-content px-4 xl:px-6 py-4">
+        <Breadcrumb className="mb-4">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
@@ -51,14 +51,14 @@ export default () => {
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
-            <BreadcrumbPage>
+            <BreadcrumbLink asChild>
               <Link to={`/courses/${id}`}>{chapter?.course?.title || id}</Link>
-            </BreadcrumbPage>
+            </BreadcrumbLink>
             <BreadcrumbSeparator />
             <BreadcrumbPage>{chapter?.title || sequence}</BreadcrumbPage>
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="flex-1 h-[calc(100vh-5.75rem)] border rounded-lg">
+        <div className="flex-1 h-[calc(100vh-7.75rem)] border rounded-lg">
           <ResizablePanelGroup direction="horizontal">
             <ResizablePanel defaultSize={50}>
               <ScrollArea className="px-4 py-3 h-full relative bg-muted">
